@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { fetchData } from './services/dataService';
-import { AdData, FilterState } from './types';
+import { fetchData, fetchBonusCalData } from './services/dataService';
+import { AdData, FilterState, CreatorTierData } from './types';
 import { Filters } from './components/Filters';
 import { OverviewDashboard } from './components/OverviewDashboard';
 import { DailyPerformance } from './components/DailyPerformance';
@@ -9,6 +9,7 @@ import { LayoutDashboard, ScatterChart, LineChart, Loader2, Menu } from 'lucide-
 
 const App: React.FC = () => {
   const [data, setData] = useState<AdData[]>([]);
+  const [tierData, setTierData] = useState<CreatorTierData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -26,13 +27,14 @@ const App: React.FC = () => {
 
   // Load Data
   useEffect(() => {
-    fetchData()
-      .then((d) => {
-        setData(d);
+    Promise.all([fetchData(), fetchBonusCalData()])
+      .then(([adData, bonusData]) => {
+        setData(adData);
+        setTierData(bonusData);
         // Initialize Date Filters
-        if (d.length > 0) {
-            const minDate = new Date(Math.min(...d.map(i => i.date.getTime())));
-            const maxDate = new Date(Math.max(...d.map(i => i.date.getTime())));
+        if (adData.length > 0) {
+            const minDate = new Date(Math.min(...adData.map(i => i.date.getTime())));
+            const maxDate = new Date(Math.max(...adData.map(i => i.date.getTime())));
             setFilters(prev => ({
                 ...prev,
                 startDate: minDate.toISOString().split('T')[0],
@@ -157,7 +159,7 @@ const App: React.FC = () => {
                     </p>
                 </div>
 
-                {activeTab === 'overview' && <OverviewDashboard data={filteredData} />}
+                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} />}
                 {activeTab === 'daily' && <DailyPerformance data={filteredData} />}
                 {activeTab === 'lifecycle' && <LifecyclePerformance data={filteredData} />}
             </div>

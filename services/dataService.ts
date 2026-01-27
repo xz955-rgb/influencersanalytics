@@ -1,6 +1,9 @@
-import { AdData, AdDataRaw } from '../types';
+import { AdData, AdDataRaw, CreatorTierData, TierLevel } from '../types';
 
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RXtp9vUyu-UnIazbcW-CAy-Y91COaMD-u--oeekb2D/pub?output=csv';
+
+// Bonus Cal CSV URL - using export format with gid for the specific tab
+const BONUS_CAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1134944905';
 
 // Helper to parse CSV line handling quotes
 const parseCSVLine = (line: string): string[] => {
@@ -130,5 +133,77 @@ export const fetchData = async (): Promise<AdData[]> => {
   } catch (error) {
     console.error("Error loading data:", error);
     throw error;
+  }
+};
+
+// Fetch Bonus Cal data for tier tracking
+export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
+  try {
+    const response = await fetch(BONUS_CAL_CSV_URL);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch bonus cal data: ${response.statusText}`);
+    }
+    const text = await response.text();
+    const lines = text.split('\n').filter(line => line.trim() !== '');
+    
+    if (lines.length < 2) return [];
+
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+    
+    // Find column indices for Bonus Cal data
+    // Expected columns: Creator Name, Sales-up to date, Tier-1 Sales, Tier-1 Bonus, ..., Tier-5 Sales, Tier-5 Bonus
+    const idx = {
+      creator: headers.findIndex(h => h.includes('creator') || h.includes('name')),
+      salesUpToDate: headers.findIndex(h => h.includes('sales') && h.includes('up to date')),
+      tier1Sales: headers.findIndex(h => h.includes('tier-1') && h.includes('sales')),
+      tier1Bonus: headers.findIndex(h => h.includes('tier-1') && h.includes('bonus')),
+      tier2Sales: headers.findIndex(h => h.includes('tier-2') && h.includes('sales')),
+      tier2Bonus: headers.findIndex(h => h.includes('tier-2') && h.includes('bonus')),
+      tier3Sales: headers.findIndex(h => h.includes('tier-3') && h.includes('sales')),
+      tier3Bonus: headers.findIndex(h => h.includes('tier-3') && h.includes('bonus')),
+      tier4Sales: headers.findIndex(h => h.includes('tier-4') && h.includes('sales')),
+      tier4Bonus: headers.findIndex(h => h.includes('tier-4') && h.includes('bonus')),
+      tier5Sales: headers.findIndex(h => h.includes('tier-5') && h.includes('sales')),
+      tier5Bonus: headers.findIndex(h => h.includes('tier-5') && h.includes('bonus')),
+    };
+
+    const creatorTierData: CreatorTierData[] = lines.slice(1).map(line => {
+      const vals = parseCSVLine(line);
+      
+      const tiers: TierLevel[] = [];
+      
+      // Parse each tier (up to 5)
+      const tierConfigs = [
+        { salesIdx: idx.tier1Sales, bonusIdx: idx.tier1Bonus, name: 'Tier 1' },
+        { salesIdx: idx.tier2Sales, bonusIdx: idx.tier2Bonus, name: 'Tier 2' },
+        { salesIdx: idx.tier3Sales, bonusIdx: idx.tier3Bonus, name: 'Tier 3' },
+        { salesIdx: idx.tier4Sales, bonusIdx: idx.tier4Bonus, name: 'Tier 4' },
+        { salesIdx: idx.tier5Sales, bonusIdx: idx.tier5Bonus, name: 'Tier 5' },
+      ];
+
+      for (const config of tierConfigs) {
+        if (config.salesIdx !== -1 && config.bonusIdx !== -1) {
+          const threshold = parseCurrency(vals[config.salesIdx]);
+          const bonus = parseCurrency(vals[config.bonusIdx]);
+          // Only add tier if threshold > 0
+          if (threshold > 0) {
+            tiers.push({ threshold, bonus, name: config.name });
+          }
+        }
+      }
+
+      return {
+        creatorName: idx.creator !== -1 ? vals[idx.creator]?.trim() || 'Unknown' : 'Unknown',
+        currentShippedRevenue: idx.salesUpToDate !== -1 ? parseCurrency(vals[idx.salesUpToDate]) : 0,
+        tiers,
+      };
+    }).filter(d => d.creatorName !== 'Unknown' && d.tiers.length > 0);
+
+    return creatorTierData;
+
+  } catch (error) {
+    console.error("Error loading bonus cal data:", error);
+    // Return empty array instead of throwing to not break the app
+    return [];
   }
 };

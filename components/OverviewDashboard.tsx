@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { AdData } from '../types';
+import { AdData, CreatorTierData } from '../types';
 import { KpiCard } from './KpiCard';
+import { TierRewardsTracker } from './TierRewardsTracker';
 import { 
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter, PieChart, Pie, ComposedChart,
   XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, 
@@ -15,6 +16,7 @@ import {
 
 interface OverviewProps {
   data: AdData[];
+  tierData: CreatorTierData[];
 }
 
 // 1. Consistent Color Palette
@@ -55,7 +57,7 @@ const formatDuration = (ms: number) => {
     return `${days} days`;
 };
 
-export const OverviewDashboard: React.FC<OverviewProps> = ({ data }) => {
+export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) => {
   // ----------------------------------------------------------------------
   // 1. KPI Calculations & Global Stats
   // ----------------------------------------------------------------------
@@ -864,6 +866,11 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data }) => {
             onClick={handleKpiClick} 
         />
       </div>
+
+      {/* Tier Rewards Tracker */}
+      {tierData.length > 0 && (
+        <TierRewardsTracker tierData={tierData} adData={data} />
+      )}
 
       {/* Strategy Alerts Section - Compact */}
       {(strategyAlerts.length > 0 || contentInsights.length > 0) && (
