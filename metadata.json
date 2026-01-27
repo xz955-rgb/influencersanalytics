@@ -1,0 +1,5 @@
+{
+  "name": "Influencer Ad Spend Analytics",
+  "description": "An interactive dashboard for analyzing influencer ad spend, GMV, and ROI performance using daily and cumulative data visualization.",
+  "requestFramePermissions": []
+}
