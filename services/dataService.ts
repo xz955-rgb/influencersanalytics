@@ -149,8 +149,14 @@ export const fetchData = async (): Promise<AdData[]> => {
   }
 };
 
+// Normalize content name for matching: lowercase, remove spaces
+// e.g., "IG Reel 4/vanity" -> "igreel4/vanity", "IgReel4/Vanity" -> "igreel4/vanity"
+export const normalizeContentName = (name: string): string => {
+  return name.toLowerCase().replace(/\s+/g, '');
+};
+
 // Fetch post links from posts tab
-// Key format: "creatorName|contentName" to handle duplicate contentNames across creators
+// Key format: "creatorName|normalizedContentName" to handle duplicate contentNames across creators
 export const fetchPostLinks = async (): Promise<Map<string, PostLinks>> => {
   try {
     const response = await fetch(POSTS_TAB_CSV_URL);
@@ -209,13 +215,15 @@ export const fetchPostLinks = async (): Promise<Map<string, PostLinks>> => {
       const normalizedAmazonUrl = normalizeUrl(amazonUrl);
       
       if (normalizedPostUrl || normalizedAmazonUrl) {
-        // Store with creator|contentName as key to avoid conflicts between creators
+        const links = { postUrl: normalizedPostUrl, amazonUrl: normalizedAmazonUrl };
+        
+        // Store with normalized keys for fuzzy matching
+        // e.g., "Ashley Thomas|igreel4/vanity" matches both "IgReel4/Vanity" and "IG Reel 4/vanity"
         if (contentNameCompact) {
-          linkMap.set(`${creatorName}|${contentNameCompact}`, { postUrl: normalizedPostUrl, amazonUrl: normalizedAmazonUrl });
+          linkMap.set(`${creatorName}|${normalizeContentName(contentNameCompact)}`, links);
         }
-        // Also store with display name for alternative matching
-        if (contentNameDisplay && contentNameDisplay !== contentNameCompact) {
-          linkMap.set(`${creatorName}|${contentNameDisplay}`, { postUrl: normalizedPostUrl, amazonUrl: normalizedAmazonUrl });
+        if (contentNameDisplay) {
+          linkMap.set(`${creatorName}|${normalizeContentName(contentNameDisplay)}`, links);
         }
       }
     });

@@ -1664,8 +1664,10 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         <tbody className="bg-white divide-y divide-slate-100">
                             {postsInSegmentAggregated.slice(0, 50).map((post, idx) => {
                                 const isSelected = selectedPosts.includes(post.contentName);
-                                // Only use exact creator|contentName match to avoid wrong links
-                                const links = postLinks.get(`${post.creator}|${post.contentName}`);
+                                // Use normalized key for fuzzy matching (handles case/space differences)
+                                // e.g., "IgReel4/Vanity" matches "IG Reel 4/vanity"
+                                const normalizedKey = `${post.creator}|${post.contentName.toLowerCase().replace(/\s+/g, '')}`;
+                                const links = postLinks.get(normalizedKey);
                                 return (
                                     <tr 
                                         key={post.contentName} 
