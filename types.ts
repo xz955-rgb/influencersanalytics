@@ -9,6 +9,8 @@ export interface AdDataRaw {
   gmv: number;
   earning: number;
   status: string; // 'run', 'paused', 'stopped', or 'unknown'
+  postUrl?: string;   // FB/IG post link
+  amazonUrl?: string; // Amazon landing page link
 }
 
 export interface AdData extends AdDataRaw {
@@ -81,3 +83,47 @@ export interface TierProgress {
   dailyGmvNeeded: number;
   rushAnalysis: RushAnalysis | null;
 }
+
+// Extended Creator Tier Data with organic/ads breakdown
+export interface CreatorBonusCalData {
+  creatorName: string;
+  totalShippedRevenue: number;    // Sales (up to date)
+  shippedRevOrganic: number;      // Shipped Rev.-Organic
+  shippedRevAds: number;          // Shipped Rev.-Ads
+  commissionOrganic: number;      // Commission-Organic
+  commissionAds: number;          // Commission-Ads
+  tiers: TierLevel[];             // Tier thresholds and bonuses
+}
+
+// Settlement data for a single creator
+export interface CreatorSettlement {
+  creatorName: string;
+  adSpend: number;                // Total ad spend for period
+  commissionEarning: number;      // Total commission earning for period
+  profit: number;                 // Commission - Spend
+  bonusDiff: number;              // Total tier bonus - Organic tier bonus
+  bonusDiffWeekly: number;        // Estimated weekly bonus diff
+  marginTecdo: number;            // 50% × (Profit + Bonus Diff) if profit > 0, else 50% × Bonus Diff
+  isProfitable: boolean;          // profit > 0
+  totalTierBonus: number;         // Bonus based on total shipped revenue
+  organicTierBonus: number;       // Bonus based on organic shipped revenue
+}
+
+// Overall earnings summary
+export interface EarningsSummary {
+  totalSpend: number;
+  totalCommission: number;
+  totalProfit: number;
+  totalBonusDiff: number;
+  totalMarginTecdo: number;
+  creatorSettlements: CreatorSettlement[];
+}
+
+// Time range preset
+export type TimeRangePreset = 
+  | 'this_week' 
+  | 'last_week' 
+  | 'this_month' 
+  | 'last_month' 
+  | 'this_quarter'
+  | 'custom';

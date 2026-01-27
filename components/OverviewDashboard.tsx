@@ -11,12 +11,15 @@ import {
   ChevronDown, PieChart as PieIcon, Activity, TrendingUp, FilterX, Layers, 
   Check, CheckSquare, Square, ArrowUpDown, DollarSign, Calendar, Clock, 
   PlayCircle, PauseCircle, StopCircle, AlertCircle, Target, Zap, AlertTriangle, 
-  AlertCircle as AlertIcon, TrendingDown, TrendingUp as TrendingUpIcon
+  AlertCircle as AlertIcon, TrendingDown, TrendingUp as TrendingUpIcon,
+  ExternalLink, ShoppingBag
 } from 'lucide-react';
+import { PostLinks } from '../services/dataService';
 
 interface OverviewProps {
   data: AdData[];
   tierData: CreatorTierData[];
+  postLinks: Map<string, PostLinks>;
 }
 
 // 1. Consistent Color Palette
@@ -39,16 +42,24 @@ const PALETTE = [
 ];
 const RADIAN = Math.PI / 180;
 
-const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, value }: any) => {
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
 
-  return percent > 0.05 ? (
-    <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={10} fontWeight="bold">
-      {`${(percent * 100).toFixed(0)}%`}
+  // percent from Recharts is already 0-1 decimal
+  if (percent <= 0.05) return null;
+  
+  const formattedValue = Math.abs(value) >= 1000 
+    ? `$${(value / 1000).toFixed(0)}K` 
+    : `$${Math.round(value)}`;
+
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight="bold">
+      <tspan x={x} dy="-0.4em">{`${Math.round(percent * 100)}%`}</tspan>
+      <tspan x={x} dy="1.1em">{formattedValue}</tspan>
     </text>
-  ) : null;
+  );
 };
 
 // Helper for duration formatting
@@ -57,7 +68,7 @@ const formatDuration = (ms: number) => {
     return `${days} days`;
 };
 
-export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) => {
+export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, postLinks }) => {
   // ----------------------------------------------------------------------
   // 1. KPI Calculations & Global Stats
   // ----------------------------------------------------------------------
@@ -66,9 +77,15 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
     const totalGmv = data.reduce((sum, item) => sum + item.gmv, 0);
     const totalEarning = data.reduce((sum, item) => sum + item.earning, 0);
     const overallRoi = totalSpend > 0 ? totalEarning / totalSpend : 0;
-    // Count unique posts
+    const netProfit = totalEarning - totalSpend;
+    // Count unique posts (all posts ever)
     const uniquePosts = new Set(data.map(d => d.contentName)).size;
-    return { totalSpend, totalGmv, totalEarning, overallRoi, uniquePosts };
+    // Count active posts today (posts with data on latest date)
+    const latestDate = data.length > 0 ? Math.max(...data.map(d => d.date.getTime())) : 0;
+    const activePostsToday = new Set(
+      data.filter(d => d.date.getTime() === latestDate).map(d => d.contentName)
+    ).size;
+    return { totalSpend, totalGmv, totalEarning, overallRoi, netProfit, uniquePosts, activePostsToday };
   }, [data]);
 
   // Determine Latest Date in the current dataset
@@ -94,12 +111,29 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
   // ----------------------------------------------------------------------
   // 2. Latest Day Analysis
   // ----------------------------------------------------------------------
-  const latestDayData = useMemo(() => {
+  // Snapshot sorting state - must be declared before useMemo that uses it
+  const [snapshotSort, setSnapshotSort] = useState<{ key: 'spend' | 'earning' | 'roi' | 'cumulativeRoi' | 'cumulativeProfit'; direction: 'asc' | 'desc' }>({ key: 'roi', direction: 'desc' });
+
+  const latestDayDataWithProfit = useMemo(() => {
     if (!latestDateTimestamp) return [];
     return data
       .filter(d => d.date.getTime() === latestDateTimestamp)
-      .sort((a, b) => b.roi - a.roi); // Sort by ROI from high to low
+      .map(d => ({
+        ...d,
+        cumulativeProfit: d.cumulativeEarning - d.cumulativeSpend,
+        dailyProfit: d.earning - d.spend,
+      }));
   }, [data, latestDateTimestamp]);
+
+  const latestDayData = useMemo(() => {
+    const sorted = [...latestDayDataWithProfit];
+    sorted.sort((a, b) => {
+      const valA = (a as any)[snapshotSort.key];
+      const valB = (b as any)[snapshotSort.key];
+      return snapshotSort.direction === 'desc' ? valB - valA : valA - valB;
+    });
+    return sorted;
+  }, [latestDayDataWithProfit, snapshotSort]);
 
   const latestDayStats = useMemo(() => {
     const spend = latestDayData.reduce((s, i) => s + i.spend, 0);
@@ -114,13 +148,13 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
   
   const strategyMatrixData = useMemo(() => {
       // Calculate Avg Spend to determine "High Spend" vs "Low Spend"
-      const spends = latestDayData.map(d => d.spend);
+      const spends = latestDayDataWithProfit.map(d => d.spend);
       const avgSpend = spends.length > 0 ? spends.reduce((a, b) => a + b, 0) / spends.length : 0;
       const spendThreshold = avgSpend;
 
       let counts = { scale: 0, cow: 0, alert: 0, test: 0 };
 
-      const processed = latestDayData.map(d => {
+      const processed = latestDayDataWithProfit.map(d => {
           let status = '';
           let color = '';
           let type: 'cow' | 'scale' | 'alert' | 'test' = 'test';
@@ -165,7 +199,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
       }
 
       return { data: sorted, counts, threshold: spendThreshold };
-  }, [latestDayData, selectedStrategyType]);
+  }, [latestDayDataWithProfit, selectedStrategyType]);
 
 
   // ----------------------------------------------------------------------
@@ -173,7 +207,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
   // ----------------------------------------------------------------------
   const [breakdownView, setBreakdownView] = useState<'trend' | 'distribution' | 'multi-metric'>('trend');
   const [compDimension, setCompDimension] = useState<'creatorName' | 'category' | 'theme'>('category');
-  const [compMetric, setCompMetric] = useState<'spend' | 'roi' | 'earning'>('roi');
+  const [compMetric, setCompMetric] = useState<'spend' | 'roi' | 'earning' | 'profit'>('roi');
   const [focusEntity, setFocusEntity] = useState<string>(''); 
   const [topN, setTopN] = useState<number>(5);
   const [selectedPost, setSelectedPost] = useState<string | null>(null); 
@@ -208,16 +242,22 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
   }, [focusEntity, topN, allEntitiesSorted]);
 
   const distributionData = useMemo(() => {
-    const grouped = data.reduce((acc, item) => {
-      const key = item[compDimension] || 'Unknown';
-      if (!acc[key]) acc[key] = 0;
-      if (compMetric === 'earning') acc[key] += item.earning;
-      else acc[key] += item.spend; 
-      return acc;
-    }, {} as Record<string, number>);
+    const grouped: Record<string, { spend: number; earning: number }> = {};
+    
+    data.forEach(item => {
+      const key = String(item[compDimension] || 'Unknown');
+      if (!grouped[key]) grouped[key] = { spend: 0, earning: 0 };
+      grouped[key].spend += item.spend;
+      grouped[key].earning += item.earning;
+    });
 
+    // Don't include 'percent' field - let Recharts calculate it automatically
+    // Recharts expects percent as 0-1 decimal, including our own field would override it
     return Object.entries(grouped)
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, v]) => {
+        const value = compMetric === 'profit' ? v.earning - v.spend : compMetric === 'earning' ? v.earning : v.spend;
+        return { name, value, spend: v.spend, earning: v.earning, profit: v.earning - v.spend };
+      })
       .sort((a, b) => b.value - a.value);
   }, [data, compDimension, compMetric]);
 
@@ -243,6 +283,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
       Object.entries(entities).forEach(([entity, val]) => {
         if (compMetric === 'roi') {
             row[entity] = val.spend > 0 ? val.earning / val.spend : 0;
+        } else if (compMetric === 'profit') {
+            row[entity] = val.earning - val.spend;
         } else if (compMetric === 'earning') {
             row[entity] = val.earning;
         } else {
@@ -252,6 +294,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
         row[`${entity}_spend`] = val.spend;
         row[`${entity}_earning`] = val.earning;
         row[`${entity}_roi`] = val.spend > 0 ? val.earning / val.spend : 0;
+        row[`${entity}_profit`] = val.earning - val.spend;
       });
       return row;
     }).sort((a: any, b: any) => Number(a.timestamp) - Number(b.timestamp));
@@ -284,6 +327,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
         dateStr: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         spend: values.spend,
         earning: values.earning,
+        profit: values.earning - values.spend,
         roi: values.spend > 0 ? values.earning / values.spend : 0,
         count: values.count
       }))
@@ -441,7 +485,16 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
 
   const postNamesInSegment = useMemo(() => postsInSegmentAggregated.map(p => p.contentName), [postsInSegmentAggregated]);
 
+  // Track if user manually selected posts to avoid auto-reset
+  const userSelectedRef = React.useRef(false);
+  
   useEffect(() => {
+    // Skip auto-selection if user just manually selected posts
+    if (userSelectedRef.current) {
+      userSelectedRef.current = false;
+      return;
+    }
+    
     if (postNamesInSegment.length > 0) {
        setSelectedPosts(postNamesInSegment.slice(0, Math.min(5, postNamesInSegment.length)));
     } else {
@@ -509,13 +562,17 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
   // Interaction Handlers
   // ----------------------------------------------------------------------
   const scrollToDeepDive = () => {
-    const element = document.getElementById('deep-dive-section');
-    if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-    }
+    // Use setTimeout to ensure state updates have been applied before scrolling
+    setTimeout(() => {
+      const element = document.getElementById('deep-dive-section');
+      if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 50);
   };
 
   const handleSnapshotClick = (postName: string) => {
+    userSelectedRef.current = true; // Prevent auto-reset
     setDrillDimension('all');
     setSelectedPosts([postName]);
     scrollToDeepDive();
@@ -527,6 +584,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
         .map(d => d.contentName);
      
      if (targetPosts.length > 0) {
+        userSelectedRef.current = true; // Prevent auto-reset
         setDrillDimension('all');
         setSelectedPosts(targetPosts);
         scrollToDeepDive();
@@ -535,6 +593,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
   
   const handleMatrixDotClick = (data: any) => {
      if (data && data.contentName) {
+         userSelectedRef.current = true; // Prevent auto-reset
          setDrillDimension('all');
          setSelectedPosts([data.contentName]);
          scrollToDeepDive();
@@ -854,14 +913,20 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
   return (
     <div className="space-y-8">
       {/* 1. Global KPI Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <KpiCard title="Total Ad Spend" value={kpis.totalSpend} type="currency" color="blue" />
         <KpiCard title="Total GMV" value={kpis.totalGmv} type="currency" color="green" />
         <KpiCard title="Total Earning" value={kpis.totalEarning} type="currency" color="emerald" />
+        <KpiCard 
+            title="Net Profit" 
+            value={kpis.netProfit} 
+            type="currency" 
+            color={kpis.netProfit >= 0 ? "emerald" : "red"} 
+        />
         <KpiCard title="Overall ROI" value={kpis.overallRoi} type="percent" color="indigo" />
         <KpiCard 
-            title="Total Active Posts" 
-            value={kpis.uniquePosts} 
+            title="Posts (Today/Total)" 
+            value={`${kpis.activePostsToday}/${kpis.uniquePosts}`} 
             color="amber" 
             onClick={handleKpiClick} 
         />
@@ -913,6 +978,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
                           <div
                             key={idx}
                             onClick={() => {
+                              userSelectedRef.current = true; // Prevent auto-reset
                               setDrillDimension('all');
                               setSelectedPosts([post.name]);
                               scrollToDeepDive();
@@ -1056,7 +1122,153 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
         </div>
       )}
 
-      {/* 2. Latest Daily Snapshot & Budget Matrix */}
+      {/* 2. Performance Trend Section */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[520px]">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-4 gap-4">
+            <div className="flex items-center gap-2">
+                {breakdownView === 'trend' ? <TrendingUp className="w-5 h-5 text-indigo-600" /> : breakdownView === 'distribution' ? <PieIcon className="w-5 h-5 text-indigo-600" /> : <Activity className="w-5 h-5 text-indigo-600" />}
+                <h3 className="text-lg font-bold text-slate-800">
+                    {breakdownView === 'trend' ? 'Performance Trend by Segment' : breakdownView === 'distribution' ? 'Total Composition' : 'Multi-Metric Analysis'}
+                </h3>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 items-center">
+                <div className="flex bg-slate-100 rounded-lg p-1 mr-1">
+                    <button onClick={() => setBreakdownView('trend')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'trend' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                        <TrendingUp className="w-3 h-3" /> Trend
+                    </button>
+                    <button onClick={() => setBreakdownView('distribution')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'distribution' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                        <PieIcon className="w-3 h-3" /> Dist.
+                    </button>
+                    <button onClick={() => setBreakdownView('multi-metric')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'multi-metric' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                        <Activity className="w-3 h-3" /> Multi
+                    </button>
+                </div>
+
+                <select value={compDimension} onChange={(e) => setCompDimension(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="category">Category</option>
+                    <option value="creatorName">Creator</option>
+                    <option value="theme">Theme</option>
+                </select>
+
+                <select value={topN} onChange={(e) => setTopN(Number(e.target.value))} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value={5}>Top 5</option>
+                    <option value={10}>Top 10</option>
+                    <option value={20}>Top 20</option>
+                    <option value={-1}>All</option>
+                </select>
+
+                <div className="relative max-w-[140px]">
+                    <select value={focusEntity} onChange={(e) => setFocusEntity(e.target.value)} className={`w-full appearance-none border py-1.5 px-2 pr-6 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500 ${focusEntity ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-medium' : 'bg-white border-slate-300 text-slate-700'}`}>
+                        <option value="">Select Entity...</option>
+                        {availableEntitiesAlpha.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                    {focusEntity ? (
+                        <button onClick={() => setFocusEntity('')} className="absolute right-6 top-1.5 text-indigo-400 hover:text-indigo-600"><FilterX className="w-3 h-3" /></button>
+                    ) : (
+                        <ChevronDown className="absolute right-2 top-2 w-3 h-3 text-slate-400 pointer-events-none" />
+                    )}
+                </div>
+
+                {breakdownView !== 'multi-metric' && (
+                    <select value={compMetric} onChange={(e) => setCompMetric(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="roi">ROI</option>
+                        <option value="spend">Spend</option>
+                        <option value="profit">Profit</option>
+                    </select>
+                )}
+            </div>
+        </div>
+        
+        <div className="flex-1 min-h-0 relative">
+            <ResponsiveContainer width="100%" height="100%">
+                {breakdownView === 'multi-metric' ? (
+                    <ComposedChart data={multiMetricData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis 
+                            dataKey="timestamp" 
+                            type="number" 
+                            domain={['auto', 'auto']} 
+                            tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} 
+                            fontSize={12} 
+                            stroke="#94a3b8" 
+                        />
+                        <YAxis 
+                            yAxisId="left"
+                            fontSize={12} 
+                            stroke="#94a3b8"
+                            label={{ value: 'Amount ($)', angle: -90, position: 'insideLeft', fontSize: 10 }}
+                        />
+                        <YAxis 
+                            yAxisId="right"
+                            orientation="right"
+                            fontSize={12} 
+                            stroke="#94a3b8"
+                            label={{ value: 'ROI (x)', angle: 90, position: 'insideRight', fontSize: 10 }}
+                        />
+                        <Tooltip content={<CustomTooltipTrend />} />
+                        <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
+                        <ReferenceLine yAxisId="right" y={1} stroke="#ef4444" strokeDasharray="3 3" />
+                        <Bar yAxisId="left" dataKey="spend" fill="#6366f1" name="Spend" opacity={0.7} />
+                        <Bar yAxisId="left" dataKey="profit" fill="#10b981" name="Profit" opacity={0.7} />
+                        <Line yAxisId="right" type="monotone" dataKey="roi" stroke="#ec4899" strokeWidth={2} name="ROI" dot={{ r: 3 }} />
+                    </ComposedChart>
+                ) : breakdownView === 'trend' ? (
+                    compMetric === 'roi' ? (
+                        <LineChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
+                            <YAxis fontSize={12} stroke="#94a3b8" />
+                            <Tooltip content={<CustomTooltipTrend />} />
+                            <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
+                            <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="3 3" />
+                            {trendData.keys.map((key, index) => (
+                                <Line 
+                                    key={key}
+                                    type="monotone" 
+                                    dataKey={key} 
+                                    stroke={getColorForEntity(key, allEntitiesSorted)} 
+                                    strokeWidth={focusEntity === key ? 3 : 2}
+                                    dot={focusEntity === key}
+                                    activeDot={{ r: 6 }}
+                                    strokeOpacity={focusEntity && focusEntity !== key ? 0.3 : 1}
+                                />
+                            ))}
+                        </LineChart>
+                    ) : (
+                        <BarChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
+                            <YAxis fontSize={12} stroke="#94a3b8" />
+                            <Tooltip content={<CustomTooltipTrend />} />
+                            <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
+                            {trendData.keys.map((key, index) => (
+                                <Bar 
+                                    key={key}
+                                    dataKey={key} 
+                                    stackId={focusEntity ? undefined : "a"}
+                                    fill={getColorForEntity(key, allEntitiesSorted)} 
+                                    fillOpacity={focusEntity && focusEntity !== key ? 0.3 : 1}
+                                />
+                            ))}
+                        </BarChart>
+                    )
+                ) : (
+                    <PieChart>
+                        <Pie data={distributionData} cx="50%" cy="50%" labelLine={false} label={renderCustomizedLabel} outerRadius={130} fill="#8884d8" dataKey="value" onClick={handlePieClick} className="cursor-pointer focus:outline-none">
+                            {distributionData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={getColorForEntity(entry.name, allEntitiesSorted)} className="hover:opacity-80 transition-opacity" />
+                            ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltipTrend />} />
+                        <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize: '12px'}} />
+                    </PieChart>
+                )}
+            </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 3. Latest Daily Snapshot & Budget Matrix */}
       {latestDateTimestamp > 0 && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             
@@ -1090,14 +1302,40 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
                             <tr>
                                 <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Post</th>
                                 <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Duration</th>
-                                <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Spend</th>
-                                <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Earn</th>
-                                <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Daily ROI</th>
-                                <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase border-l border-slate-100">Life ROI</th>
+                                <th 
+                                    className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase cursor-pointer hover:text-indigo-600"
+                                    onClick={() => setSnapshotSort(prev => ({ key: 'spend', direction: prev.key === 'spend' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                >
+                                    <span className="flex items-center justify-end gap-1">Spend {snapshotSort.key === 'spend' && (snapshotSort.direction === 'desc' ? '↓' : '↑')}</span>
+                                </th>
+                                <th 
+                                    className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase cursor-pointer hover:text-indigo-600"
+                                    onClick={() => setSnapshotSort(prev => ({ key: 'earning', direction: prev.key === 'earning' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                >
+                                    <span className="flex items-center justify-end gap-1">Earn {snapshotSort.key === 'earning' && (snapshotSort.direction === 'desc' ? '↓' : '↑')}</span>
+                                </th>
+                                <th 
+                                    className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase cursor-pointer hover:text-indigo-600"
+                                    onClick={() => setSnapshotSort(prev => ({ key: 'roi', direction: prev.key === 'roi' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                >
+                                    <span className="flex items-center justify-end gap-1">Daily ROI {snapshotSort.key === 'roi' && (snapshotSort.direction === 'desc' ? '↓' : '↑')}</span>
+                                </th>
+                                <th 
+                                    className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase border-l border-slate-100 cursor-pointer hover:text-indigo-600"
+                                    onClick={() => setSnapshotSort(prev => ({ key: 'cumulativeRoi', direction: prev.key === 'cumulativeRoi' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                >
+                                    <span className="flex items-center justify-end gap-1">Life ROI {snapshotSort.key === 'cumulativeRoi' && (snapshotSort.direction === 'desc' ? '↓' : '↑')}</span>
+                                </th>
+                                <th 
+                                    className="px-4 py-2 text-right text-[10px] font-bold text-slate-500 uppercase cursor-pointer hover:text-indigo-600"
+                                    onClick={() => setSnapshotSort(prev => ({ key: 'cumulativeProfit', direction: prev.key === 'cumulativeProfit' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                >
+                                    <span className="flex items-center justify-end gap-1">Life Profit {snapshotSort.key === 'cumulativeProfit' && (snapshotSort.direction === 'desc' ? '↓' : '↑')}</span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                            {strategyMatrixData.data.map((post) => {
+                            {latestDayData.map((post) => {
                                 const startTime = postStartDates.get(post.contentName) || latestDateTimestamp;
                                 const durationDays = Math.floor((latestDateTimestamp - startTime) / (1000 * 60 * 60 * 24)) + 1;
                                 return (
@@ -1117,6 +1355,9 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
                                         <td className="px-4 py-2 text-right text-xs font-mono text-slate-700">${post.earning.toLocaleString()}</td>
                                         <td className={`px-4 py-2 text-right text-xs font-bold font-mono ${post.roi >= 1 ? 'text-green-600' : 'text-red-500'}`}>{post.roi.toFixed(2)}x</td>
                                         <td className={`px-4 py-2 text-right text-xs font-mono font-medium border-l border-slate-100 ${post.cumulativeRoi >= 1 ? 'text-emerald-600' : 'text-rose-500'}`}>{post.cumulativeRoi.toFixed(2)}x</td>
+                                        <td className={`px-4 py-2 text-right text-xs font-mono font-medium ${post.cumulativeProfit >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                            {post.cumulativeProfit >= 0 ? '+' : ''}${post.cumulativeProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                        </td>
                                     </tr>
                                 );
                             })}
@@ -1222,152 +1463,6 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
 
           </div>
       )}
-
-      {/* 3. Breakdown Section */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[520px]">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-4 gap-4">
-            <div className="flex items-center gap-2">
-                {breakdownView === 'trend' ? <TrendingUp className="w-5 h-5 text-indigo-600" /> : breakdownView === 'distribution' ? <PieIcon className="w-5 h-5 text-indigo-600" /> : <Activity className="w-5 h-5 text-indigo-600" />}
-                <h3 className="text-lg font-bold text-slate-800">
-                    {breakdownView === 'trend' ? 'Performance Trend by Segment' : breakdownView === 'distribution' ? 'Total Composition' : 'Multi-Metric Analysis'}
-                </h3>
-            </div>
-            
-            <div className="flex flex-wrap gap-2 items-center">
-                <div className="flex bg-slate-100 rounded-lg p-1 mr-1">
-                    <button onClick={() => setBreakdownView('trend')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'trend' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                        <TrendingUp className="w-3 h-3" /> Trend
-                    </button>
-                    <button onClick={() => setBreakdownView('distribution')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'distribution' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                        <PieIcon className="w-3 h-3" /> Dist.
-                    </button>
-                    <button onClick={() => setBreakdownView('multi-metric')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'multi-metric' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                        <Activity className="w-3 h-3" /> Multi
-                    </button>
-                </div>
-
-                <select value={compDimension} onChange={(e) => setCompDimension(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="category">Category</option>
-                    <option value="creatorName">Creator</option>
-                    <option value="theme">Theme</option>
-                </select>
-
-                <select value={topN} onChange={(e) => setTopN(Number(e.target.value))} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value={5}>Top 5</option>
-                    <option value={10}>Top 10</option>
-                    <option value={20}>Top 20</option>
-                    <option value={-1}>All</option>
-                </select>
-
-                <div className="relative max-w-[140px]">
-                    <select value={focusEntity} onChange={(e) => setFocusEntity(e.target.value)} className={`w-full appearance-none border py-1.5 px-2 pr-6 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500 ${focusEntity ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-medium' : 'bg-white border-slate-300 text-slate-700'}`}>
-                        <option value="">Select Entity...</option>
-                        {availableEntitiesAlpha.map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                    {focusEntity ? (
-                        <button onClick={() => setFocusEntity('')} className="absolute right-6 top-1.5 text-indigo-400 hover:text-indigo-600"><FilterX className="w-3 h-3" /></button>
-                    ) : (
-                        <ChevronDown className="absolute right-2 top-2 w-3 h-3 text-slate-400 pointer-events-none" />
-                    )}
-                </div>
-
-                {breakdownView !== 'multi-metric' && (
-                    <select value={compMetric} onChange={(e) => setCompMetric(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                        <option value="roi">ROI</option>
-                        <option value="spend">Spend</option>
-                        <option value="earning">Earning</option>
-                    </select>
-                )}
-            </div>
-        </div>
-        
-        <div className="flex-1 min-h-0 relative">
-            <ResponsiveContainer width="100%" height="100%">
-                {breakdownView === 'multi-metric' ? (
-                    <ComposedChart data={multiMetricData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis 
-                            dataKey="timestamp" 
-                            type="number" 
-                            domain={['auto', 'auto']} 
-                            tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} 
-                            fontSize={12} 
-                            stroke="#94a3b8" 
-                        />
-                        <YAxis 
-                            yAxisId="left"
-                            fontSize={12} 
-                            stroke="#94a3b8"
-                            label={{ value: 'Amount ($)', angle: -90, position: 'insideLeft', fontSize: 10 }}
-                        />
-                        <YAxis 
-                            yAxisId="right"
-                            orientation="right"
-                            fontSize={12} 
-                            stroke="#94a3b8"
-                            label={{ value: 'ROI (x)', angle: 90, position: 'insideRight', fontSize: 10 }}
-                        />
-                        <Tooltip content={<CustomTooltipTrend />} />
-                        <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
-                        <ReferenceLine yAxisId="right" y={1} stroke="#ef4444" strokeDasharray="3 3" />
-                        <Bar yAxisId="left" dataKey="spend" fill="#6366f1" name="Spend" opacity={0.7} />
-                        <Bar yAxisId="left" dataKey="earning" fill="#10b981" name="Earning" opacity={0.7} />
-                        <Line yAxisId="right" type="monotone" dataKey="roi" stroke="#ec4899" strokeWidth={2} name="ROI" dot={{ r: 3 }} />
-                    </ComposedChart>
-                ) : breakdownView === 'trend' ? (
-                    compMetric === 'roi' ? (
-                        <LineChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
-                            <YAxis fontSize={12} stroke="#94a3b8" />
-                            <Tooltip content={<CustomTooltipTrend />} />
-                            <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
-                            <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="3 3" />
-                            {trendData.keys.map((key, index) => (
-                                <Line 
-                                    key={key}
-                                    type="monotone" 
-                                    dataKey={key} 
-                                    stroke={getColorForEntity(key, allEntitiesSorted)} 
-                                    strokeWidth={focusEntity === key ? 3 : 2}
-                                    dot={focusEntity === key}
-                                    activeDot={{ r: 6 }}
-                                    strokeOpacity={focusEntity && focusEntity !== key ? 0.3 : 1}
-                                />
-                            ))}
-                        </LineChart>
-                    ) : (
-                        <BarChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
-                            <YAxis fontSize={12} stroke="#94a3b8" />
-                            <Tooltip content={<CustomTooltipTrend />} />
-                            <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
-                            {trendData.keys.map((key, index) => (
-                                <Bar 
-                                    key={key}
-                                    dataKey={key} 
-                                    stackId={focusEntity ? undefined : "a"}
-                                    fill={getColorForEntity(key, allEntitiesSorted)} 
-                                    fillOpacity={focusEntity && focusEntity !== key ? 0.3 : 1}
-                                />
-                            ))}
-                        </BarChart>
-                    )
-                ) : (
-                    <PieChart>
-                        <Pie data={distributionData} cx="50%" cy="50%" labelLine={false} label={renderCustomizedLabel} outerRadius={130} fill="#8884d8" dataKey="value" onClick={handlePieClick} className="cursor-pointer focus:outline-none">
-                            {distributionData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={getColorForEntity(entry.name, allEntitiesSorted)} className="hover:opacity-80 transition-opacity" />
-                            ))}
-                        </Pie>
-                        <Tooltip content={<CustomTooltipTrend />} />
-                        <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize: '12px'}} />
-                    </PieChart>
-                )}
-            </ResponsiveContainer>
-        </div>
-      </div>
 
       {/* 4. Deep Dive Analysis Section */}
       <div id="deep-dive-section" className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-20">
@@ -1528,116 +1623,139 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
             </div>
         </div>
 
-        {/* 4b. Top Posts Leaderboard Table (Moved BELOW charts) */}
+        {/* 4b. Top Posts Leaderboard Table */}
         <div className="overflow-x-auto bg-slate-50/20">
-            <div className="min-w-full inline-block align-middle">
+            <div className="inline-block min-w-full align-middle">
                 <div className="overflow-hidden">
                     <table className="min-w-full divide-y divide-slate-200">
                         <thead className="bg-slate-50">
                             <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">
-                                    <div className="flex items-center justify-center">
-                                         <button onClick={handleSelectAll} className="hover:text-indigo-600">
-                                            {selectedPosts.length === postNamesInSegment.length ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                         </button>
-                                    </div>
+                                <th scope="col" className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">
+                                    <button onClick={handleSelectAll} className="hover:text-indigo-600">
+                                        {selectedPosts.length === postNamesInSegment.length ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                    </button>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('contentName')}>
+                                <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('contentName')}>
                                     <div className="flex items-center gap-1">Post Name <ArrowUpDown className="w-3 h-3" /></div>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('isActive')}>
-                                    <div className="flex items-center gap-1">Status <ArrowUpDown className="w-3 h-3" /></div>
+                                <th scope="col" className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('isActive')}>
+                                    <div className="flex items-center justify-center gap-1">Status <ArrowUpDown className="w-3 h-3" /></div>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('durationDays')}>
-                                    <div className="flex items-center gap-1">Duration <ArrowUpDown className="w-3 h-3" /></div>
+                                <th scope="col" className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('durationDays')}>
+                                    <div className="flex items-center justify-center gap-1">Duration <ArrowUpDown className="w-3 h-3" /></div>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('spend')}>
-                                    <div className="flex items-center justify-end gap-1">Ad Spend <ArrowUpDown className="w-3 h-3" /></div>
+                                <th scope="col" className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('spend')}>
+                                    <div className="flex items-center justify-end gap-1">Spend <ArrowUpDown className="w-3 h-3" /></div>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('earning')}>
-                                    <div className="flex items-center justify-end gap-1">Earnings <ArrowUpDown className="w-3 h-3" /></div>
+                                <th scope="col" className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('earning')}>
+                                    <div className="flex items-center justify-end gap-1">Earn <ArrowUpDown className="w-3 h-3" /></div>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('roi')}>
+                                <th scope="col" className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('roi')}>
                                     <div className="flex items-center justify-end gap-1">ROI <ArrowUpDown className="w-3 h-3" /></div>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('spendPercent')}>
-                                    <div className="flex items-center justify-end gap-1">博主占比 <ArrowUpDown className="w-3 h-3" /></div>
+                                <th scope="col" className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('spendPercent')}>
+                                    <div className="flex items-center justify-end gap-1">Share <ArrowUpDown className="w-3 h-3" /></div>
+                                </th>
+                                <th scope="col" className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                    Links
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-200">
+                        <tbody className="bg-white divide-y divide-slate-100">
                             {postsInSegmentAggregated.slice(0, 50).map((post, idx) => {
                                 const isSelected = selectedPosts.includes(post.contentName);
+                                // Only use exact creator|contentName match to avoid wrong links
+                                const links = postLinks.get(`${post.creator}|${post.contentName}`);
                                 return (
                                     <tr 
                                         key={post.contentName} 
                                         onClick={() => togglePostSelection(post.contentName)}
                                         className={`hover:bg-indigo-50/50 cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50' : ''}`}
                                     >
-                                        <td className="px-6 py-3 whitespace-nowrap text-center">
+                                        <td className="px-3 py-2 whitespace-nowrap text-center">
                                             <div className={`w-4 h-4 rounded border mx-auto flex items-center justify-center ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
                                                 {isSelected && <Check className="w-3 h-3 text-white" />}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-3 whitespace-nowrap">
+                                        <td className="px-3 py-2 whitespace-nowrap">
                                             <div className="flex items-center">
-                                                <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: getColorForEntity(post.contentName, postNamesInSegment) }}></span>
-                                                <div>
-                                                    <div className="text-sm font-medium text-slate-900 truncate max-w-[200px] sm:max-w-xs" title={post.contentName}>{post.contentName}</div>
+                                                <span className="w-2 h-2 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: getColorForEntity(post.contentName, postNamesInSegment) }}></span>
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-medium text-slate-900 truncate max-w-[180px]" title={post.contentName}>{post.contentName}</div>
                                                     <div className="text-xs text-slate-500">{post.creator} • {post.platform}</div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-3 whitespace-nowrap">
+                                        <td className="px-3 py-2 whitespace-nowrap text-center">
                                             {post.status === 'run' ? (
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                                     <PlayCircle className="w-3 h-3 mr-1" /> Run
                                                 </span>
                                             ) : post.status === 'paused' ? (
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-                                                    <PauseCircle className="w-3 h-3 mr-1" /> Paused
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                                                    <PauseCircle className="w-3 h-3 mr-1" /> Pause
                                                 </span>
                                             ) : post.status === 'stopped' ? (
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                                                    <StopCircle className="w-3 h-3 mr-1" /> Stopped
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                                                    <StopCircle className="w-3 h-3 mr-1" /> Stop
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                                                    {post.isActive ? 'Active' : 'Inactive'}
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                                                    {post.isActive ? 'Active' : 'Off'}
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-3 whitespace-nowrap text-xs text-slate-600">
-                                            <div className="flex items-center gap-1" title={`${new Date(post.minTime).toLocaleDateString()} - ${new Date(post.maxTime).toLocaleDateString()}`}>
-                                                <Clock className="w-3 h-3 text-slate-400" />
-                                                <span>{formatDuration(post.maxTime - post.minTime)}</span>
-                                            </div>
-                                            <div className="text-[10px] text-slate-400 mt-0.5">
-                                                {new Date(post.minTime).toLocaleDateString(undefined, {month:'short', day:'numeric'})} - {new Date(post.maxTime).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
+                                        <td className="px-3 py-2 whitespace-nowrap text-center text-xs text-slate-600">
+                                            <div title={`${new Date(post.minTime).toLocaleDateString()} - ${new Date(post.maxTime).toLocaleDateString()}`}>
+                                                {formatDuration(post.maxTime - post.minTime)}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-3 whitespace-nowrap text-right text-sm text-slate-700 font-mono">
-                                            ${post.spend.toLocaleString()}
+                                        <td className="px-3 py-2 whitespace-nowrap text-right text-sm text-slate-700 font-mono">
+                                            ${post.spend.toLocaleString(undefined, {maximumFractionDigits: 0})}
                                         </td>
-                                        <td className="px-6 py-3 whitespace-nowrap text-right text-sm text-slate-700 font-mono">
-                                            ${post.earning.toLocaleString()}
+                                        <td className="px-3 py-2 whitespace-nowrap text-right text-sm text-slate-700 font-mono">
+                                            ${post.earning.toLocaleString(undefined, {maximumFractionDigits: 0})}
                                         </td>
-                                        <td className="px-6 py-3 whitespace-nowrap text-right text-sm font-bold font-mono">
+                                        <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-bold font-mono">
                                             <span className={post.roi >= 1 ? 'text-green-600' : 'text-red-500'}>
                                                 {post.roi.toFixed(2)}x
                                             </span>
                                         </td>
-                                        <td className="px-6 py-3 whitespace-nowrap text-right text-sm font-mono">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <div className="w-12 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                        <td className="px-3 py-2 whitespace-nowrap text-right text-sm">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                <div className="w-10 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                                                     <div 
                                                         className={`h-full ${post.spendPercent >= 30 ? 'bg-red-500' : post.spendPercent >= 15 ? 'bg-amber-500' : 'bg-indigo-500'}`}
                                                         style={{ width: `${Math.min(100, post.spendPercent)}%` }}
                                                     />
                                                 </div>
-                                                <span className={`${post.spendPercent >= 30 ? 'text-red-600 font-bold' : post.spendPercent >= 15 ? 'text-amber-600' : 'text-slate-600'}`}>
+                                                <span className={`text-xs font-mono ${post.spendPercent >= 30 ? 'text-red-600 font-bold' : post.spendPercent >= 15 ? 'text-amber-600' : 'text-slate-600'}`}>
                                                     {post.spendPercent.toFixed(1)}%
                                                 </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-2 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center justify-center gap-1">
+                                                {links?.postUrl ? (
+                                                    <a href={links.postUrl} target="_blank" rel="noopener noreferrer"
+                                                       className="p-1 rounded bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors" title="View Post">
+                                                        <ExternalLink className="w-3.5 h-3.5" />
+                                                    </a>
+                                                ) : (
+                                                    <span className="p-1 rounded bg-slate-100 text-slate-300">
+                                                        <ExternalLink className="w-3.5 h-3.5" />
+                                                    </span>
+                                                )}
+                                                {links?.amazonUrl ? (
+                                                    <a href={links.amazonUrl} target="_blank" rel="noopener noreferrer"
+                                                       className="p-1 rounded bg-orange-100 text-orange-600 hover:bg-orange-200 transition-colors" title="View Amazon">
+                                                        <ShoppingBag className="w-3.5 h-3.5" />
+                                                    </a>
+                                                ) : (
+                                                    <span className="p-1 rounded bg-slate-100 text-slate-300">
+                                                        <ShoppingBag className="w-3.5 h-3.5" />
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -1646,7 +1764,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData }) =
                         </tbody>
                     </table>
                     {postsInSegmentAggregated.length > 50 && (
-                        <div className="px-6 py-3 text-xs text-center text-slate-400 border-t border-slate-100">
+                        <div className="px-3 py-2 text-xs text-center text-slate-400 border-t border-slate-100">
                             Showing top 50 of {postsInSegmentAggregated.length} posts
                         </div>
                     )}

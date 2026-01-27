@@ -222,31 +222,28 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <div className="bg-green-50 rounded-lg p-2 border border-green-100">
-          <div className="text-xs text-slate-500 mb-1">Current Bonus</div>
-          <div className="text-lg font-bold text-green-600">${currentBonus.toLocaleString()}</div>
-        </div>
+      {/* Stats - Simplified Overview */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
         {nextTier ? (
           <>
-            <div className="bg-orange-50 rounded-lg p-2 border border-orange-100">
+            <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 text-center">
               <div className="text-xs text-slate-500 mb-1">Gap to {nextTier.name}</div>
-              <div className="text-lg font-bold text-orange-600">${gapToNextTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              <div className="text-xl font-bold text-orange-600">${gapToNextTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
             </div>
-            <div className="bg-blue-50 rounded-lg p-2 border border-blue-100">
-              <div className="text-xs text-slate-500 mb-1">Daily GMV Needed</div>
-              <div className="text-lg font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 text-center">
+              <div className="text-xs text-slate-500 mb-1">Daily Sales Needed</div>
+              <div className="text-xl font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
             </div>
-            <div className="bg-purple-50 rounded-lg p-2 border border-purple-100">
+            <div className="bg-purple-50 rounded-lg p-3 border border-purple-100 text-center">
               <div className="text-xs text-slate-500 mb-1">Next Tier Bonus</div>
-              <div className="text-lg font-bold text-purple-600">${nextTier.bonus.toLocaleString()}</div>
+              <div className="text-xl font-bold text-purple-600">${nextTier.bonus.toLocaleString()}</div>
+              <div className="text-[10px] text-slate-400">Current: ${currentBonus.toLocaleString()}</div>
             </div>
           </>
         ) : (
           <div className="col-span-3 bg-green-50 rounded-lg p-3 border border-green-200 flex items-center justify-center">
             <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-            <span className="text-green-700 font-semibold">Maximum Tier Achieved!</span>
+            <span className="text-green-700 font-semibold">Maximum Tier Achieved! Current Bonus: ${currentBonus.toLocaleString()}</span>
           </div>
         )}
       </div>
@@ -267,17 +264,23 @@ interface RushAnalysisPanelProps {
 
 const RushAnalysisPanel: React.FC<RushAnalysisPanelProps> = ({ analysis, bonusIncrease, gapToNextTier, daysRemaining }) => {
   const { posts } = analysis;
-  const [showAllPosts, setShowAllPosts] = useState(false);
+  const [showPostDetails, setShowPostDetails] = useState(false);
 
-  // Calculate projected GMV for each post
+  // Calculate projected GMV and projected spend for each post
   const totalCurrentSpend = posts.reduce((sum, p) => sum + p.totalSpend, 0);
+  const totalDaysWithData = posts.reduce((sum, p) => sum + p.daysWithData, 0);
+  const avgDaysWithData = posts.length > 0 ? totalDaysWithData / posts.length : 1;
   
   const postsWithProjection = posts.map(p => {
     const projectedGmv = p.avgDailyGmv * daysRemaining;
-    return { ...p, projectedGmv, extraSpend: 0, extraGmv: 0, extraCost: 0 };
+    // Calculate projected ad spend for natural GMV: use avg daily spend * daysRemaining
+    const avgDailySpend = p.daysWithData > 0 ? p.totalSpend / p.daysWithData : 0;
+    const projectedSpend = avgDailySpend * daysRemaining;
+    return { ...p, projectedGmv, projectedSpend, extraSpend: 0, extraGmv: 0, extraCost: 0 };
   });
 
   const totalProjectedGmv = postsWithProjection.reduce((sum, p) => sum + p.projectedGmv, 0);
+  const totalProjectedSpend = postsWithProjection.reduce((sum, p) => sum + p.projectedSpend, 0);
   const shortfall = Math.max(0, gapToNextTier - totalProjectedGmv);
   const canReachNaturally = shortfall === 0;
 
@@ -297,10 +300,8 @@ const RushAnalysisPanel: React.FC<RushAnalysisPanelProps> = ({ analysis, bonusIn
   const netGain = bonusIncrease - totalExtraCost;
   const worthRushing = netGain > 0;
 
-  const visiblePosts = showAllPosts ? postsWithProjection : postsWithProjection.slice(0, 10);
-
   return (
-    <div className={`rounded-lg border-2 p-4 ${canReachNaturally ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-50 border-slate-300'}`}>
+    <div className={`rounded-lg border-2 p-4 ${canReachNaturally ? 'bg-emerald-50 border-emerald-300' : worthRushing ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
       
       {/* Status & Conclusion */}
       <div className="flex items-start gap-3 mb-4">
@@ -344,10 +345,14 @@ const RushAnalysisPanel: React.FC<RushAnalysisPanelProps> = ({ analysis, bonusIn
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
         <div className="bg-white/70 rounded p-2 text-center">
           <div className="text-[10px] text-slate-500">Projected GMV</div>
           <div className="text-sm font-bold text-blue-600">${totalProjectedGmv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+        </div>
+        <div className="bg-white/70 rounded p-2 text-center">
+          <div className="text-[10px] text-slate-500">Projected Ad Spend</div>
+          <div className="text-sm font-bold text-indigo-600">${totalProjectedSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
         </div>
         <div className="bg-white/70 rounded p-2 text-center">
           <div className="text-[10px] text-slate-500">Shortfall</div>
@@ -369,89 +374,96 @@ const RushAnalysisPanel: React.FC<RushAnalysisPanelProps> = ({ analysis, bonusIn
         </div>
       </div>
 
-      {/* Per-Post Table */}
+      {/* Per-Post Table - Collapsed by default */}
       <div className="bg-white/60 rounded-lg p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Zap className="w-4 h-4 text-amber-600" />
-          <h5 className="text-xs font-semibold text-slate-700">Per-Post Data (Last 3 Days) — Sorted by ROAS</h5>
-        </div>
+        <button 
+          onClick={() => setShowPostDetails(!showPostDetails)}
+          className="w-full flex items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-600" />
+            <h5 className="text-xs font-semibold text-slate-700">Per-Post Breakdown ({posts.length} posts)</h5>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showPostDetails ? 'rotate-180' : ''}`} />
+        </button>
         
-        <div className="overflow-x-auto">
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
-                <th className="text-left py-1 font-medium">Post</th>
-                <th className="text-right py-1 font-medium w-10">Days</th>
-                <th className="text-right py-1 font-medium w-12">ROAS</th>
-                <th className="text-right py-1 font-medium w-12">ROI</th>
-                <th className="text-right py-1 font-medium w-16">Projected</th>
-                {shortfall > 0 && (
-                  <>
-                    <th className="text-right py-1 font-medium w-16">Extra Spend</th>
-                    <th className="text-right py-1 font-medium w-14">Extra Cost</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {visiblePosts.map((p, idx) => (
-                <tr key={p.contentName} className={idx % 2 === 0 ? 'bg-slate-50/50' : ''}>
-                  <td className="py-1.5 pr-2">
-                    <div className="truncate max-w-[120px] font-medium text-slate-700" title={p.contentName}>{p.contentName}</div>
-                  </td>
-                  <td className="text-right py-1.5">
-                    <span className={`flex items-center justify-end gap-0.5 ${p.isNewPost ? 'text-amber-600' : 'text-slate-500'}`}>
-                      {p.isNewPost && <Clock className="w-3 h-3" />}{p.daysWithData}
-                    </span>
-                  </td>
-                  <td className="text-right py-1.5">
-                    <span className={`font-semibold ${p.roas >= 10 ? 'text-green-600' : p.roas >= 5 ? 'text-blue-600' : 'text-slate-600'}`}>
-                      {p.roas.toFixed(1)}x
-                    </span>
-                  </td>
-                  <td className="text-right py-1.5">
-                    <span className={`font-semibold ${p.roi >= 1 ? 'text-green-600' : p.roi >= 0.5 ? 'text-blue-600' : 'text-slate-600'}`}>
-                      {p.roi.toFixed(2)}x
-                    </span>
-                  </td>
-                  <td className="text-right py-1.5 text-blue-600">${p.projectedGmv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                  {shortfall > 0 && (
-                    <>
-                      <td className="text-right py-1.5 text-orange-600 font-medium">${p.extraSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                      <td className="text-right py-1.5 text-red-500">${p.extraCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    </>
-                  )}
-                </tr>
-              ))}
-              {/* Total */}
-              <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold">
-                <td className="py-2 text-slate-700">Total</td>
-                <td className="text-right py-2 text-slate-500">-</td>
-                <td className="text-right py-2 text-slate-500">-</td>
-                <td className="text-right py-2 text-slate-500">-</td>
-                <td className="text-right py-2 text-blue-600">${totalProjectedGmv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                {shortfall > 0 && (
-                  <>
-                    <td className="text-right py-2 text-orange-600">${totalExtraSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    <td className="text-right py-2 text-red-600">${totalExtraCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                  </>
-                )}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        
-        {posts.length > 10 && (
-          <button onClick={() => setShowAllPosts(!showAllPosts)} className="mt-2 text-[11px] text-amber-600 hover:text-amber-700 font-medium">
-            {showAllPosts ? 'Show less' : `Show all ${posts.length} posts`}
-          </button>
-        )}
+        {showPostDetails && (
+          <>
+            <div className="overflow-x-auto mt-3">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500">
+                    <th className="text-left py-1 font-medium">Post</th>
+                    <th className="text-right py-1 font-medium w-10">Days</th>
+                    <th className="text-right py-1 font-medium w-12">ROAS</th>
+                    <th className="text-right py-1 font-medium w-12">ROI</th>
+                    <th className="text-right py-1 font-medium w-16">Proj. GMV</th>
+                    <th className="text-right py-1 font-medium w-16">Proj. Spend</th>
+                    {shortfall > 0 && (
+                      <>
+                        <th className="text-right py-1 font-medium w-16">Extra Spend</th>
+                        <th className="text-right py-1 font-medium w-14">Extra Cost</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {postsWithProjection.map((p, idx) => (
+                    <tr key={p.contentName} className={idx % 2 === 0 ? 'bg-slate-50/50' : ''}>
+                      <td className="py-1.5 pr-2">
+                        <div className="truncate max-w-[120px] font-medium text-slate-700" title={p.contentName}>{p.contentName}</div>
+                      </td>
+                      <td className="text-right py-1.5">
+                        <span className={`flex items-center justify-end gap-0.5 ${p.isNewPost ? 'text-amber-600' : 'text-slate-500'}`}>
+                          {p.isNewPost && <Clock className="w-3 h-3" />}{p.daysWithData}
+                        </span>
+                      </td>
+                      <td className="text-right py-1.5">
+                        <span className={`font-semibold ${p.roas >= 10 ? 'text-green-600' : p.roas >= 5 ? 'text-blue-600' : 'text-slate-600'}`}>
+                          {p.roas.toFixed(1)}x
+                        </span>
+                      </td>
+                      <td className="text-right py-1.5">
+                        <span className={`font-semibold ${p.roi >= 1 ? 'text-green-600' : p.roi >= 0.5 ? 'text-blue-600' : 'text-slate-600'}`}>
+                          {p.roi.toFixed(2)}x
+                        </span>
+                      </td>
+                      <td className="text-right py-1.5 text-blue-600">${p.projectedGmv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td className="text-right py-1.5 text-indigo-600">${p.projectedSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      {shortfall > 0 && (
+                        <>
+                          <td className="text-right py-1.5 text-orange-600 font-medium">${p.extraSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                          <td className="text-right py-1.5 text-red-500">${p.extraCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                  {/* Total */}
+                  <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold">
+                    <td className="py-2 text-slate-700">Total</td>
+                    <td className="text-right py-2 text-slate-500">-</td>
+                    <td className="text-right py-2 text-slate-500">-</td>
+                    <td className="text-right py-2 text-slate-500">-</td>
+                    <td className="text-right py-2 text-blue-600">${totalProjectedGmv.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                    <td className="text-right py-2 text-indigo-600">${totalProjectedSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                    {shortfall > 0 && (
+                      <>
+                        <td className="text-right py-2 text-orange-600">${totalExtraSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                        <td className="text-right py-2 text-red-600">${totalExtraCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      </>
+                    )}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
-          <span><Clock className="w-3 h-3 inline text-amber-500" /> &lt;3 days (less reliable)</span>
-          <span><span className="text-green-600 font-semibold">Green</span>: High</span>
-          <span><span className="text-blue-600 font-semibold">Blue</span>: Medium</span>
-        </div>
+            <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
+              <span><Clock className="w-3 h-3 inline text-amber-500" /> &lt;3 days (less reliable)</span>
+              <span><span className="text-green-600 font-semibold">Green</span>: High</span>
+              <span><span className="text-blue-600 font-semibold">Blue</span>: Medium</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Calculation Logic */}

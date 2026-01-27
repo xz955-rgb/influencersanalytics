@@ -1,19 +1,21 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { fetchData, fetchBonusCalData } from './services/dataService';
-import { AdData, FilterState, CreatorTierData } from './types';
+import { fetchData, fetchBonusCalData, fetchPostLinks, fetchCreatorBonusCalData, PostLinks } from './services/dataService';
+import { AdData, FilterState, CreatorTierData, CreatorBonusCalData } from './types';
 import { Filters } from './components/Filters';
 import { OverviewDashboard } from './components/OverviewDashboard';
-import { DailyPerformance } from './components/DailyPerformance';
 import { LifecyclePerformance } from './components/LifecyclePerformance';
-import { LayoutDashboard, ScatterChart, LineChart, Loader2, Menu } from 'lucide-react';
+import { EarningsTab } from './components/EarningsTab';
+import { LayoutDashboard, LineChart, DollarSign, Loader2, Menu } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<AdData[]>([]);
   const [tierData, setTierData] = useState<CreatorTierData[]>([]);
+  const [bonusCalData, setBonusCalData] = useState<CreatorBonusCalData[]>([]);
+  const [postLinks, setPostLinks] = useState<Map<string, PostLinks>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'daily' | 'lifecycle'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'lifecycle' | 'earnings'>('overview');
 
   // Filters State
   const [filters, setFilters] = useState<FilterState>({
@@ -27,10 +29,12 @@ const App: React.FC = () => {
 
   // Load Data
   useEffect(() => {
-    Promise.all([fetchData(), fetchBonusCalData()])
-      .then(([adData, bonusData]) => {
+    Promise.all([fetchData(), fetchBonusCalData(), fetchPostLinks(), fetchCreatorBonusCalData()])
+      .then(([adData, tierBonusData, linksData, creatorBonusData]) => {
         setData(adData);
-        setTierData(bonusData);
+        setTierData(tierBonusData);
+        setPostLinks(linksData);
+        setBonusCalData(creatorBonusData);
         // Initialize Date Filters
         if (adData.length > 0) {
             const minDate = new Date(Math.min(...adData.map(i => i.date.getTime())));
@@ -126,21 +130,21 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
             <button 
                 onClick={() => setActiveTab('overview')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
                 <LayoutDashboard className="w-4 h-4" /> Overview
             </button>
             <button 
-                onClick={() => setActiveTab('daily')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'daily' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-                <ScatterChart className="w-4 h-4" /> Daily
-            </button>
-            <button 
                 onClick={() => setActiveTab('lifecycle')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'lifecycle' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'lifecycle' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
                 <LineChart className="w-4 h-4" /> Lifecycle
+            </button>
+            <button 
+                onClick={() => setActiveTab('earnings')}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'earnings' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+                <DollarSign className="w-4 h-4" /> Earnings
             </button>
           </div>
         </header>
@@ -148,20 +152,21 @@ const App: React.FC = () => {
         {/* Scrollable Content Area */}
         <main className="flex-1 overflow-y-auto p-6 scroll-smooth">
             <div className="max-w-7xl mx-auto pb-10">
-                <div className="mb-6">
-                    <h2 className="text-2xl font-bold text-slate-800">
-                        {activeTab === 'overview' && 'Dashboard Overview'}
-                        {activeTab === 'daily' && 'Daily Performance Analysis'}
-                        {activeTab === 'lifecycle' && 'Cumulative Lifecycle Analysis'}
-                    </h2>
-                    <p className="text-slate-500 text-sm">
-                        Showing data for {filteredData.length} records based on current filters.
-                    </p>
-                </div>
+                {activeTab !== 'earnings' && (
+                  <div className="mb-6">
+                      <h2 className="text-2xl font-bold text-slate-800">
+                          {activeTab === 'overview' && 'Dashboard Overview'}
+                          {activeTab === 'lifecycle' && 'Cumulative Lifecycle Analysis'}
+                      </h2>
+                      <p className="text-slate-500 text-sm">
+                          Showing data for {filteredData.length} records based on current filters.
+                      </p>
+                  </div>
+                )}
 
-                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} />}
-                {activeTab === 'daily' && <DailyPerformance data={filteredData} />}
+                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} postLinks={postLinks} />}
                 {activeTab === 'lifecycle' && <LifecyclePerformance data={filteredData} />}
+                {activeTab === 'earnings' && <EarningsTab adData={data} bonusCalData={bonusCalData} />}
             </div>
         </main>
       </div>
