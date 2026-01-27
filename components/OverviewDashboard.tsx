@@ -12,7 +12,7 @@ import {
   Check, CheckSquare, Square, ArrowUpDown, DollarSign, Calendar, Clock, 
   PlayCircle, PauseCircle, StopCircle, AlertCircle, Target, Zap, AlertTriangle, 
   AlertCircle as AlertIcon, TrendingDown, TrendingUp as TrendingUpIcon,
-  ExternalLink, ShoppingBag
+  ExternalLink, ShoppingBag, Search
 } from 'lucide-react';
 import { PostLinks } from '../services/dataService';
 
@@ -351,6 +351,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'spend', direction: 'desc' });
   const [deepDiveRoiFilter, setDeepDiveRoiFilter] = useState<'all' | 'high' | 'low'>('all');
   const [deepDiveUseLogScale, setDeepDiveUseLogScale] = useState(false);
+  const [deepDiveSearch, setDeepDiveSearch] = useState<string>('');
 
   const drillOptions = useMemo(() => {
     if (drillDimension === 'all') return [];
@@ -1475,6 +1476,18 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                 </div>
                 
                 <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                    {/* Search Box */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search posts..."
+                            value={deepDiveSearch}
+                            onChange={(e) => setDeepDiveSearch(e.target.value)}
+                            className="w-48 pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+                    
                     <div className="flex gap-2 items-center bg-white border border-slate-300 rounded-lg p-1 shadow-sm">
                         <select value={drillDimension} onChange={(e) => setDrillDimension(e.target.value as any)} className="bg-transparent border-none text-slate-700 py-1 px-2 text-sm focus:ring-0 font-medium">
                             <option value="category">Category</option>
@@ -1624,7 +1637,28 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         </div>
 
         {/* 4b. Top Posts Leaderboard Table */}
-        <div className="overflow-x-auto bg-slate-50/20">
+        <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <span className="text-sm text-slate-600">
+                Showing <strong className="text-indigo-600">
+                    {postsInSegmentAggregated.filter(post => {
+                        if (!deepDiveSearch.trim()) return true;
+                        const searchLower = deepDiveSearch.toLowerCase();
+                        return post.contentName.toLowerCase().includes(searchLower) || 
+                               post.creator.toLowerCase().includes(searchLower);
+                    }).length}
+                </strong> of {postsInSegmentAggregated.length} posts
+                {deepDiveSearch && <span className="ml-2 text-slate-400">• searching "{deepDiveSearch}"</span>}
+            </span>
+            {deepDiveSearch && (
+                <button 
+                    onClick={() => setDeepDiveSearch('')}
+                    className="text-xs text-slate-500 hover:text-indigo-600 flex items-center gap-1"
+                >
+                    <FilterX className="w-3 h-3" /> Clear search
+                </button>
+            )}
+        </div>
+        <div className="overflow-x-auto bg-slate-50/20 max-h-[600px] overflow-y-auto">
             <div className="inline-block min-w-full align-middle">
                 <div className="overflow-hidden">
                     <table className="min-w-full divide-y divide-slate-200">
@@ -1662,7 +1696,14 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100">
-                            {postsInSegmentAggregated.slice(0, 50).map((post, idx) => {
+                            {postsInSegmentAggregated
+                                .filter(post => {
+                                    if (!deepDiveSearch.trim()) return true;
+                                    const searchLower = deepDiveSearch.toLowerCase();
+                                    return post.contentName.toLowerCase().includes(searchLower) || 
+                                           post.creator.toLowerCase().includes(searchLower);
+                                })
+                                .map((post, idx) => {
                                 const isSelected = selectedPosts.includes(post.contentName);
                                 // Use normalized key for fuzzy matching (handles case/space differences)
                                 // e.g., "IgReel4/Vanity" matches "IG Reel 4/vanity"
