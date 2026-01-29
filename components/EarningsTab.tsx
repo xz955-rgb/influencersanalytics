@@ -640,7 +640,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
               <h4 className="font-semibold text-purple-800 text-sm mb-2">📧 M+1: Flat Fee Rewards Email</h4>
               <p className="text-xs text-purple-600 mb-3">Send in {rewardsMonthStr} (Due: {rewardsDueDate})</p>
               <p className="text-xs text-slate-600 mb-2"><strong>For:</strong> All creators</p>
-              <p className="text-xs text-slate-600"><strong>Payment:</strong> Flat Fee Rewards Diff / 2</p>
+              <p className="text-xs text-slate-600 mb-1"><strong>Payment (Profitable):</strong> Rewards Diff / 2</p>
+              <p className="text-xs text-slate-600"><strong>Payment (Loss):</strong> 100% Rewards Diff</p>
             </div>
             
             {/* M+2 Template - ROI >= 1 */}
@@ -788,14 +789,14 @@ Commission from Ads: ${formatFullCurrency(s.commissionEarning)}
 
 Flat Fee Rewards (already settled in ${rewardsMonthStr}):
 Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
-Flat Fee Rewards Payment (50%): ${formatFullCurrency(rewardsPayment)}
+Flat Fee Rewards Payment (100% Diff): ${formatFullCurrency(rewardsPayment)}
 
 Ad Spend: ${formatFullCurrency(s.adSpend)}
 
 Total Profit: ${formatFullCurrency(s.profit)}
 (Commission + Flat Fee Rewards Diff - Ad Spend)
 
-Note: Since Commission ROI < 1, Tecdo absorbs the Ad Spend loss.
+Note: Since Total Profit < 0, Tecdo absorbs the Ad Spend loss. Creator pays 100% of Flat Fee Rewards Diff to Tecdo.
 Commission Payment: ${formatFullCurrency(commissionPayment)} (Commission only)
 
 Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
@@ -845,15 +846,17 @@ Commission from Ads: ${formatFullCurrency(s.commissionEarning)}
 
 Flat Fee Rewards (already settled in ${rewardsMonthStr}):
 Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
-Flat Fee Rewards Payment (50%): ${formatFullCurrency(rewardsPayment)}
+Flat Fee Rewards Payment (100% Diff): ${formatFullCurrency(rewardsPayment)}
 
 Ad Spend: ${formatFullCurrency(s.adSpend)}
 
 Total Profit: ${formatFullCurrency(s.profit)}
 (Commission + Flat Fee Rewards Diff - Ad Spend)
 
-Note: Since Commission ROI < 1, Tecdo absorbs the Ad Spend loss.
+Note: Since Total Profit < 0, Tecdo absorbs the Ad Spend loss. Creator pays 100% of Flat Fee Rewards Diff to Tecdo.
 Commission Payment: ${formatFullCurrency(commissionPayment)} (Commission only)
+
+Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
 
 Best Regards,
 Tec-do Billing`}
