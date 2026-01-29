@@ -456,6 +456,152 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
       </div>
       )}
 
+      {/* Payments Section - Creator payments to Tecdo */}
+      {hasValidBonusCalData && (
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-indigo-50">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-purple-600" />
+            Creator Payments to Tecdo
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Bonus: 次月发放 (M+1) | Commission: 隔月发放 (M+2)
+          </p>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Creator</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Commission ROI</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Bonus (M+1)">
+                  收到Bonus时 (M+1)
+                </th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Commission (M+2)">
+                  收到Commission时 (M+2)
+                </th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Total Payment</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-100">
+              {sortedSettlements.map((settlement) => {
+                // Commission ROI = Commission / Ad Spend
+                const commissionRoi = settlement.adSpend > 0 ? settlement.commissionEarning / settlement.adSpend : 0;
+                const isProfitableRoi = commissionRoi >= 1;
+                
+                // Payment calculations
+                let paymentOnBonus = 0;  // M+1
+                let paymentOnCommission = 0;  // M+2
+                
+                if (isProfitableRoi) {
+                  // ROI >= 1: 达人盈利
+                  // 收到Bonus时：支付 Bonus Diff / 2
+                  paymentOnBonus = settlement.bonusDiff / 2;
+                  // 收到Commission时：支付 Profit/2 + Ad Spend - Bonus Diff/2
+                  paymentOnCommission = settlement.profit / 2 + settlement.adSpend - settlement.bonusDiff / 2;
+                } else {
+                  // ROI < 1: 达人亏损
+                  // 收到Commission时：支付全部 Commission-Ads
+                  paymentOnCommission = settlement.commissionEarning;
+                  // 收到Bonus时：支付剩余 (Ad Spend - Commission 已支付的部分，如果还有缺口)
+                  // 剩余 = Ad Spend - Commission + Bonus Diff 的一部分用于弥补
+                  // 简化：如果亏损，Bonus全部用于弥补亏损
+                  paymentOnBonus = Math.min(settlement.bonusDiff, settlement.adSpend - settlement.commissionEarning);
+                  if (paymentOnBonus < 0) paymentOnBonus = 0;
+                }
+                
+                const totalPayment = paymentOnBonus + paymentOnCommission;
+                
+                return (
+                  <tr key={settlement.creatorName} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isProfitableRoi ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        <span className="text-sm font-medium text-slate-900">{settlement.creatorName}</span>
+                      </div>
+                    </td>
+                    <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold ${isProfitableRoi ? 'text-green-600' : 'text-amber-600'}`}>
+                      {commissionRoi.toFixed(2)}x
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
+                      {formatFullCurrency(paymentOnBonus)}
+                      <div className="text-[9px] text-slate-400">
+                        {isProfitableRoi ? 'Bonus Diff / 2' : '弥补亏损'}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
+                      {formatFullCurrency(paymentOnCommission)}
+                      <div className="text-[9px] text-slate-400">
+                        {isProfitableRoi ? 'Profit/2 + Spend - BonusDiff/2' : '全部Commission'}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
+                      {formatFullCurrency(totalPayment)}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isProfitableRoi ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-700'}`}>
+                        {isProfitableRoi ? 'ROI ≥ 1' : 'ROI < 1'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              
+              {/* Total row */}
+              <tr className="bg-slate-100 font-bold">
+                <td className="px-3 py-3 whitespace-nowrap text-sm text-slate-900">
+                  Total
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-500">
+                  -
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
+                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
+                    const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
+                    if (roi >= 1) return sum + s.bonusDiff / 2;
+                    return sum + Math.max(0, Math.min(s.bonusDiff, s.adSpend - s.commissionEarning));
+                  }, 0))}
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
+                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
+                    const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
+                    if (roi >= 1) return sum + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
+                    return sum + s.commissionEarning;
+                  }, 0))}
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
+                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
+                    const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
+                    if (roi >= 1) {
+                      return sum + s.bonusDiff / 2 + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
+                    }
+                    const payBonus = Math.max(0, Math.min(s.bonusDiff, s.adSpend - s.commissionEarning));
+                    return sum + s.commissionEarning + payBonus;
+                  }, 0))}
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap text-center">-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        {/* Payment Logic Explanation */}
+        <div className="p-4 bg-purple-50 border-t border-purple-100">
+          <h4 className="text-xs font-semibold text-purple-800 mb-2">Payment Logic</h4>
+          <div className="text-xs text-purple-700 space-y-1">
+            <p><strong>If Commission ROI ≥ 1 (盈利):</strong></p>
+            <p className="ml-2">• 收到 Bonus (M+1): 支付 <code className="bg-white px-1 rounded">Bonus Diff / 2</code></p>
+            <p className="ml-2">• 收到 Commission (M+2): 支付 <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Bonus Diff/2</code></p>
+            <p className="mt-2"><strong>If Commission ROI &lt; 1 (亏损):</strong></p>
+            <p className="ml-2">• 收到 Commission (M+2): 支付 <code className="bg-white px-1 rounded">全部 Commission-Ads</code></p>
+            <p className="ml-2">• 收到 Bonus (M+1): 支付 <code className="bg-white px-1 rounded">剩余部分用于弥补亏损</code></p>
+          </div>
+        </div>
+      </div>
+      )}
+
       {/* Calculation Notes - only show when data is available */}
       {hasValidBonusCalData && (
       <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
