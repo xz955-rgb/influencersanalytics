@@ -457,7 +457,13 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
       )}
 
       {/* Payments Section - Creator payments to Tecdo */}
-      {hasValidBonusCalData && (
+      {hasValidBonusCalData && (() => {
+        // Get month names for display
+        const dataMonth = startDate.toLocaleString('en-US', { month: 'short' }); // e.g., "Jan"
+        const bonusMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1).toLocaleString('en-US', { month: 'short' }); // M+1
+        const commissionMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 2, 1).toLocaleString('en-US', { month: 'short' }); // M+2
+        
+        return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-indigo-50">
           <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -465,7 +471,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
             Creator Payments to Tecdo
           </h3>
           <p className="text-xs text-slate-500 mt-1">
-            Bonus: 次月发放 (M+1) | Commission: 隔月发放 (M+2)
+            <strong>{dataMonth}</strong> data → Bonus paid in <strong>{bonusMonth}</strong> (M+1) | Commission paid in <strong>{commissionMonth}</strong> (M+2)
           </p>
         </div>
         
@@ -476,10 +482,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Creator</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Commission ROI</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Bonus (M+1)">
-                  收到Bonus时 (M+1)
+                  {bonusMonth} Bonus (M+1)
                 </th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Commission (M+2)">
-                  收到Commission时 (M+2)
+                  {commissionMonth} Commission (M+2)
                 </th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Total Payment</th>
                 <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Status</th>
@@ -491,22 +497,18 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                 const commissionRoi = settlement.adSpend > 0 ? settlement.commissionEarning / settlement.adSpend : 0;
                 const isProfitableRoi = commissionRoi >= 1;
                 
-                // Payment calculations
-                let paymentOnBonus = 0;  // M+1
+                // Payment calculations - Both ROI >= 1 and ROI < 1 pay Bonus Diff / 2
+                let paymentOnBonus = settlement.bonusDiff / 2;  // M+1: Always Bonus Diff / 2
                 let paymentOnCommission = 0;  // M+2
                 
                 if (isProfitableRoi) {
-                  // ROI >= 1: 达人盈利
-                  // 收到Bonus时：支付 Bonus Diff / 2
-                  paymentOnBonus = settlement.bonusDiff / 2;
-                  // 收到Commission时：支付 Profit/2 + Ad Spend - Bonus Diff/2
+                  // ROI >= 1: Profitable
+                  // On Commission: Profit/2 + Ad Spend - Bonus Diff/2
                   paymentOnCommission = settlement.profit / 2 + settlement.adSpend - settlement.bonusDiff / 2;
                 } else {
-                  // ROI < 1: 达人亏损
-                  // 收到Commission时 (M+2)：支付全部 Commission-Ads + Ad Spend
+                  // ROI < 1: Loss
+                  // On Commission: Commission + Ad Spend
                   paymentOnCommission = settlement.commissionEarning + settlement.adSpend;
-                  // 收到Bonus时 (M+1)：无需额外支付（已在M+2全部结清）
-                  paymentOnBonus = 0;
                 }
                 
                 const totalPayment = paymentOnBonus + paymentOnCommission;
@@ -525,7 +527,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
                       {formatFullCurrency(paymentOnBonus)}
                       <div className="text-[9px] text-slate-400">
-                        {isProfitableRoi ? 'Bonus Diff / 2' : '无需支付'}
+                        Bonus Diff / 2
                       </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
@@ -555,26 +557,23 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                   -
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
-                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
-                    const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
-                    if (roi >= 1) return sum + s.bonusDiff / 2;
-                    return sum; // ROI < 1: no payment on bonus
-                  }, 0))}
+                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => sum + s.bonusDiff / 2, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
                     const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
                     if (roi >= 1) return sum + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
-                    return sum + s.commissionEarning + s.adSpend; // ROI < 1: Commission + Ad Spend
+                    return sum + s.commissionEarning + s.adSpend;
                   }, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
                     const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
-                    if (roi >= 1) {
-                      return sum + s.bonusDiff / 2 + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
-                    }
-                    return sum + s.commissionEarning + s.adSpend; // ROI < 1: Commission + Ad Spend
+                    const bonusPay = s.bonusDiff / 2;
+                    const commPay = roi >= 1 
+                      ? s.profit / 2 + s.adSpend - s.bonusDiff / 2 
+                      : s.commissionEarning + s.adSpend;
+                    return sum + bonusPay + commPay;
                   }, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-center">-</td>
@@ -585,18 +584,19 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
         
         {/* Payment Logic Explanation */}
         <div className="p-4 bg-purple-50 border-t border-purple-100">
-          <h4 className="text-xs font-semibold text-purple-800 mb-2">Payment Logic</h4>
+          <h4 className="text-xs font-semibold text-purple-800 mb-2">Payment Logic ({dataMonth} Data)</h4>
           <div className="text-xs text-purple-700 space-y-1">
-            <p><strong>If Commission ROI ≥ 1 (盈利):</strong></p>
-            <p className="ml-2">• 收到 Bonus (M+1): 支付 <code className="bg-white px-1 rounded">Bonus Diff / 2</code></p>
-            <p className="ml-2">• 收到 Commission (M+2): 支付 <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Bonus Diff/2</code></p>
-            <p className="mt-2"><strong>If Commission ROI &lt; 1 (亏损):</strong></p>
-            <p className="ml-2">• 收到 Commission (M+2): 支付 <code className="bg-white px-1 rounded">Commission-Ads + Ad Spend</code></p>
-            <p className="ml-2">• 收到 Bonus (M+1): <code className="bg-white px-1 rounded">无需额外支付</code></p>
+            <p><strong>Both ROI ≥ 1 and ROI &lt; 1:</strong></p>
+            <p className="ml-2">• {bonusMonth} Bonus (M+1): Pay <code className="bg-white px-1 rounded">Bonus Diff / 2</code></p>
+            <p className="mt-2"><strong>If Commission ROI ≥ 1 (Profitable):</strong></p>
+            <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Bonus Diff/2</code></p>
+            <p className="mt-2"><strong>If Commission ROI &lt; 1 (Loss):</strong></p>
+            <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Commission + Ad Spend</code></p>
           </div>
         </div>
       </div>
-      )}
+        );
+      })()}
 
       {/* Calculation Notes - only show when data is available */}
       {hasValidBonusCalData && (
