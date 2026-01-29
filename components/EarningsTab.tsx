@@ -499,16 +499,20 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                 // If Profit >= 0: Profitable; If Profit < 0: Loss (Tecdo absorbs)
                 const isProfitable = settlement.profit >= 0;
                 
-                // Payment calculations - Both profitable and loss pay Flat Fee Rewards Diff / 2
-                let paymentOnBonus = settlement.bonusDiff / 2;  // M+1: Always Rewards Diff / 2
+                // Payment calculations
+                let paymentOnBonus = 0;  // M+1
                 let paymentOnCommission = 0;  // M+2
                 
                 if (isProfitable) {
                   // Profit >= 0: Profitable
+                  // On Bonus: Rewards Diff / 2
+                  paymentOnBonus = settlement.bonusDiff / 2;
                   // On Commission: Profit/2 + Ad Spend - Rewards Diff/2
                   paymentOnCommission = settlement.profit / 2 + settlement.adSpend - settlement.bonusDiff / 2;
                 } else {
                   // Profit < 0: Loss - Tecdo absorbs the loss
+                  // On Bonus: Full Rewards Diff (all goes to Tecdo)
+                  paymentOnBonus = settlement.bonusDiff;
                   // On Commission: Only Commission (no Ad Spend burden on creator)
                   paymentOnCommission = settlement.commissionEarning;
                 }
@@ -532,7 +536,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
                       {formatFullCurrency(paymentOnBonus)}
                       <div className="text-[9px] text-slate-400">
-                        Rewards Diff / 2
+                        {isProfitable ? 'Rewards Diff / 2' : 'Rewards Diff (full)'}
                       </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
@@ -562,7 +566,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => sum + s.profit, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
-                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => sum + s.bonusDiff / 2, 0))}
+                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
+                    // Profit: half; Loss: full
+                    return sum + (s.profit >= 0 ? s.bonusDiff / 2 : s.bonusDiff);
+                  }, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
@@ -572,7 +579,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
-                    const bonusPay = s.bonusDiff / 2;
+                    const bonusPay = s.profit >= 0 ? s.bonusDiff / 2 : s.bonusDiff; // Loss: full rewards diff
                     const commPay = s.profit >= 0 
                       ? s.profit / 2 + s.adSpend - s.bonusDiff / 2 
                       : s.commissionEarning; // Loss: Commission only
@@ -591,11 +598,11 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
           <div className="text-xs text-purple-700 space-y-1">
             <p><strong>Extra Earnings</strong> = Commission + Flat Fee Rewards Diff</p>
             <p><strong>Total Profit</strong> = Extra Earnings - Ad Spend</p>
-            <p className="mt-2"><strong>All creators:</strong></p>
-            <p className="ml-2">• {bonusMonth} Flat Fee Rewards (M+1): Pay <code className="bg-white px-1 rounded">Rewards Diff / 2</code></p>
             <p className="mt-2"><strong>If Total Profit ≥ 0 (Profitable):</strong></p>
+            <p className="ml-2">• {bonusMonth} Flat Fee Rewards (M+1): Pay <code className="bg-white px-1 rounded">Rewards Diff / 2</code></p>
             <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Rewards Diff/2</code></p>
             <p className="mt-2"><strong>If Total Profit &lt; 0 (Loss):</strong></p>
+            <p className="ml-2">• {bonusMonth} Flat Fee Rewards (M+1): Pay <code className="bg-white px-1 rounded">Rewards Diff (full)</code></p>
             <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Commission only</code> (Tecdo absorbs the loss)</p>
           </div>
         </div>
@@ -660,7 +667,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
               {sortedSettlements.map((s) => {
                 // Use Total Profit to determine profitability (not Commission ROI)
                 const isProfitable = s.profit >= 0;
-                const rewardsPayment = s.bonusDiff / 2;
+                // Profit: half; Loss: full rewards diff
+                const rewardsPayment = isProfitable ? s.bonusDiff / 2 : s.bonusDiff;
                 const commissionPayment = isProfitable 
                   ? s.profit / 2 + s.adSpend - s.bonusDiff / 2 
                   : s.commissionEarning;
@@ -683,7 +691,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                       {/* M+1 Email */}
                       <div className="border border-purple-200 rounded-lg p-3 bg-purple-50/30">
                         <div className="flex justify-between items-center mb-2">
-                          <h5 className="font-semibold text-purple-800 text-xs">M+1: Flat Fee Rewards Email ({rewardsMonthStr})</h5>
+                          <h5 className="font-semibold text-purple-800 text-xs">M+1: Flat Fee Rewards Email ({rewardsMonthStr}) - {isProfitable ? 'Profitable' : 'Loss'}</h5>
                           <button 
                             onClick={() => navigator.clipboard.writeText(`Dear ${firstName},
 
@@ -698,7 +706,7 @@ Total Flat Fee Rewards: ${formatFullCurrency(s.totalTierBonus)}
 Organic Flat Fee Rewards: ${formatFullCurrency(s.organicTierBonus)}
 Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
 
-Flat Fee Rewards Payment (50% × Flat Fee Rewards Diff): ${formatFullCurrency(rewardsPayment)}
+Flat Fee Rewards Payment${isProfitable ? ' (50% × Flat Fee Rewards Diff)' : ' (100% × Flat Fee Rewards Diff - Loss case)'}: ${formatFullCurrency(rewardsPayment)}
 
 Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
 
@@ -725,7 +733,7 @@ Total Flat Fee Rewards: ${formatFullCurrency(s.totalTierBonus)}
 Organic Flat Fee Rewards: ${formatFullCurrency(s.organicTierBonus)}
 Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
 
-Flat Fee Rewards Payment (50% × Flat Fee Rewards Diff): ${formatFullCurrency(rewardsPayment)}
+Flat Fee Rewards Payment${isProfitable ? ' (50% × Flat Fee Rewards Diff)' : ' (100% × Flat Fee Rewards Diff - Loss case)'}: ${formatFullCurrency(rewardsPayment)}
 
 Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
 
