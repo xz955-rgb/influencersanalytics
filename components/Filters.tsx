@@ -65,7 +65,7 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
     
     // Group themes - updated groupings
     const holidayThemes = ['New Year', 'Valentine', 'Xmas']; // Removed Winter
-    const seasonThemes = ['Winter']; // New Season category
+    const seasonThemes = ['Winter', 'Spring']; // Season category
     const homeThemes = ['Kitchen', 'Bedroom', 'Bathroom']; // Removed Home (use All instead)
     const beautyThemes = ['Beauty']; // New Beauty category
     
