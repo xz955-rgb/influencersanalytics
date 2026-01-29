@@ -85,11 +85,11 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
   const isMonthlyPeriod = timePreset === 'this_month' || timePreset === 'last_month';
 
   // Check if we have Bonus Cal data for this period
-  // - "This Month" (January 2026): Full Bonus Cal data available
+  // - "This Month" / "Last Month": Full Bonus Cal data available (from Google Sheet)
   // - "This Week" / "Last Week": Use ad data earning + prorated bonus diff
-  // - "Last Month" / "This Quarter": No historical Bonus Cal data yet
-  const hasValidBonusCalData = timePreset === 'this_month' || timePreset === 'this_week' || timePreset === 'last_week';
-  const hasFullBonusCalData = timePreset === 'this_month'; // Only this month has complete data
+  // - "This Quarter": Historical data needed
+  const hasValidBonusCalData = timePreset === 'this_month' || timePreset === 'last_month' || timePreset === 'this_week' || timePreset === 'last_week';
+  const hasFullBonusCalData = timePreset === 'this_month' || timePreset === 'last_month'; // Monthly periods use Bonus Cal data
 
   // Calculate earnings summary (only if we have valid data)
   const earningsSummary: EarningsSummary = useMemo(() => {
@@ -240,10 +240,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
           <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-amber-800 mb-2">Historical Data Not Available</h3>
           <p className="text-sm text-amber-700 max-w-md mx-auto">
-            Bonus Cal data for <strong>{timePreset === 'last_month' ? 'Last Month' : timePreset === 'this_quarter' ? 'This Quarter' : 'this period'}</strong> is not yet available.
+            Bonus Cal data for <strong>{timePreset === 'this_quarter' ? 'This Quarter' : 'this period'}</strong> is not yet available.
             <br /><br />
             Available periods:
-            <br />• <strong>This Month</strong> - Full Bonus Cal data
+            <br />• <strong>This Month / Last Month</strong> - Full Bonus Cal data
             <br />• <strong>This Week / Last Week</strong> - Ad data + prorated Bonus Diff
             <br /><br />
             Historical data will be added to a separate table for accurate quarterly/monthly settlement tracking.
