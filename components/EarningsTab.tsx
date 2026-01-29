@@ -480,7 +480,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Creator</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Commission ROI</th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Total Profit</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Flat Fee Rewards (M+1)">
                   {bonusMonth} Rewards (M+1)
                 </th>
@@ -493,21 +493,23 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
             </thead>
             <tbody className="bg-white divide-y divide-slate-100">
               {sortedSettlements.map((settlement) => {
-                // Commission ROI = Commission / Ad Spend
-                const commissionRoi = settlement.adSpend > 0 ? settlement.commissionEarning / settlement.adSpend : 0;
-                const isProfitableRoi = commissionRoi >= 1;
+                // Extra Earnings = Commission + Rewards Diff
+                const extraEarnings = settlement.commissionEarning + settlement.bonusDiff;
+                // Profit = Extra Earnings - Ad Spend
+                // If Profit >= 0: Profitable; If Profit < 0: Loss (Tecdo absorbs)
+                const isProfitable = settlement.profit >= 0;
                 
-                // Payment calculations - Both ROI >= 1 and ROI < 1 pay Flat Fee Rewards Diff / 2
+                // Payment calculations - Both profitable and loss pay Flat Fee Rewards Diff / 2
                 let paymentOnBonus = settlement.bonusDiff / 2;  // M+1: Always Rewards Diff / 2
                 let paymentOnCommission = 0;  // M+2
                 
-                if (isProfitableRoi) {
-                  // ROI >= 1: Profitable
-                  // On Commission: Profit/2 + Ad Spend - Bonus Diff/2
+                if (isProfitable) {
+                  // Profit >= 0: Profitable
+                  // On Commission: Profit/2 + Ad Spend - Rewards Diff/2
                   paymentOnCommission = settlement.profit / 2 + settlement.adSpend - settlement.bonusDiff / 2;
                 } else {
-                  // ROI < 1: Loss - Tecdo absorbs the Ad Spend loss
-                  // On Commission: Only Commission (no Ad Spend)
+                  // Profit < 0: Loss - Tecdo absorbs the loss
+                  // On Commission: Only Commission (no Ad Spend burden on creator)
                   paymentOnCommission = settlement.commissionEarning;
                 }
                 
@@ -517,12 +519,15 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                   <tr key={settlement.creatorName} className="hover:bg-slate-50 transition-colors">
                     <td className="px-3 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${isProfitableRoi ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        <div className={`w-2 h-2 rounded-full ${isProfitable ? 'bg-green-500' : 'bg-amber-500'}`} />
                         <span className="text-sm font-medium text-slate-900">{settlement.creatorName}</span>
                       </div>
                     </td>
-                    <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold ${isProfitableRoi ? 'text-green-600' : 'text-amber-600'}`}>
-                      {commissionRoi.toFixed(2)}x
+                    <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold ${isProfitable ? 'text-green-600' : 'text-amber-600'}`}>
+                      {formatFullCurrency(settlement.profit)}
+                      <div className="text-[9px] text-slate-400">
+                        Extra: {formatCurrency(extraEarnings)} - Spend: {formatCurrency(settlement.adSpend)}
+                      </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
                       {formatFullCurrency(paymentOnBonus)}
@@ -533,15 +538,15 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
                       {formatFullCurrency(paymentOnCommission)}
                       <div className="text-[9px] text-slate-400">
-                        {isProfitableRoi ? 'Profit/2 + Spend - RewardsDiff/2' : 'Commission only'}
+                        {isProfitable ? 'Profit/2 + Spend - RewardsDiff/2' : 'Commission only'}
                       </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
                       {formatFullCurrency(totalPayment)}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-center">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isProfitableRoi ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-700'}`}>
-                        {isProfitableRoi ? 'ROI ≥ 1' : 'ROI < 1'}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isProfitable ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-700'}`}>
+                        {isProfitable ? 'Profit' : 'Loss'}
                       </span>
                     </td>
                   </tr>
@@ -553,26 +558,24 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                 <td className="px-3 py-3 whitespace-nowrap text-sm text-slate-900">
                   Total
                 </td>
-                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-500">
-                  -
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-700">
+                  {formatFullCurrency(sortedSettlements.reduce((sum, s) => sum + s.profit, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => sum + s.bonusDiff / 2, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
-                    const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
-                    if (roi >= 1) return sum + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
-                    return sum + s.commissionEarning; // ROI < 1: Commission only
+                    if (s.profit >= 0) return sum + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
+                    return sum + s.commissionEarning; // Loss: Commission only
                   }, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
-                    const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
                     const bonusPay = s.bonusDiff / 2;
-                    const commPay = roi >= 1 
+                    const commPay = s.profit >= 0 
                       ? s.profit / 2 + s.adSpend - s.bonusDiff / 2 
-                      : s.commissionEarning; // ROI < 1: Commission only
+                      : s.commissionEarning; // Loss: Commission only
                     return sum + bonusPay + commPay;
                   }, 0))}
                 </td>
@@ -586,12 +589,14 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
         <div className="p-4 bg-purple-50 border-t border-purple-100">
           <h4 className="text-xs font-semibold text-purple-800 mb-2">Payment Logic ({dataMonth} Data)</h4>
           <div className="text-xs text-purple-700 space-y-1">
-            <p><strong>Both ROI ≥ 1 and ROI &lt; 1:</strong></p>
+            <p><strong>Extra Earnings</strong> = Commission + Flat Fee Rewards Diff</p>
+            <p><strong>Total Profit</strong> = Extra Earnings - Ad Spend</p>
+            <p className="mt-2"><strong>All creators:</strong></p>
             <p className="ml-2">• {bonusMonth} Flat Fee Rewards (M+1): Pay <code className="bg-white px-1 rounded">Rewards Diff / 2</code></p>
-            <p className="mt-2"><strong>If Commission ROI ≥ 1 (Profitable):</strong></p>
+            <p className="mt-2"><strong>If Total Profit ≥ 0 (Profitable):</strong></p>
             <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Rewards Diff/2</code></p>
-            <p className="mt-2"><strong>If Commission ROI &lt; 1 (Loss):</strong></p>
-            <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Commission only</code> (Tecdo absorbs the Ad Spend loss)</p>
+            <p className="mt-2"><strong>If Total Profit &lt; 0 (Loss):</strong></p>
+            <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Commission only</code> (Tecdo absorbs the loss)</p>
           </div>
         </div>
       </div>
@@ -653,8 +658,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
             <h4 className="font-semibold text-slate-700 text-sm mb-3">Generated Emails by Creator</h4>
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
               {sortedSettlements.map((s) => {
-                const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
-                const isProfitable = roi >= 1;
+                // Use Total Profit to determine profitability (not Commission ROI)
+                const isProfitable = s.profit >= 0;
                 const rewardsPayment = s.bonusDiff / 2;
                 const commissionPayment = isProfitable 
                   ? s.profit / 2 + s.adSpend - s.bonusDiff / 2 
@@ -668,7 +673,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                         <div className={`w-2 h-2 rounded-full ${isProfitable ? 'bg-green-500' : 'bg-amber-500'}`} />
                         <span className="font-medium text-slate-800">{s.creatorName}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${isProfitable ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                          ROI: {roi.toFixed(2)}x
+                          Profit: {formatCurrency(s.profit)}
                         </span>
                       </div>
                       <span className="text-xs text-slate-500">Click to expand</span>
