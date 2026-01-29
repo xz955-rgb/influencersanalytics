@@ -471,7 +471,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
             Creator Payments to Tecdo
           </h3>
           <p className="text-xs text-slate-500 mt-1">
-            <strong>{dataMonth}</strong> data → Bonus paid in <strong>{bonusMonth}</strong> (M+1) | Commission paid in <strong>{commissionMonth}</strong> (M+2)
+            <strong>{dataMonth}</strong> data → Flat Fee Rewards paid in <strong>{bonusMonth}</strong> (M+1) | Commission paid in <strong>{commissionMonth}</strong> (M+2)
           </p>
         </div>
         
@@ -481,8 +481,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Creator</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Commission ROI</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Bonus (M+1)">
-                  {bonusMonth} Bonus (M+1)
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Flat Fee Rewards (M+1)">
+                  {bonusMonth} Rewards (M+1)
                 </th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase" title="Payment when receiving Commission (M+2)">
                   {commissionMonth} Commission (M+2)
@@ -497,8 +497,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                 const commissionRoi = settlement.adSpend > 0 ? settlement.commissionEarning / settlement.adSpend : 0;
                 const isProfitableRoi = commissionRoi >= 1;
                 
-                // Payment calculations - Both ROI >= 1 and ROI < 1 pay Bonus Diff / 2
-                let paymentOnBonus = settlement.bonusDiff / 2;  // M+1: Always Bonus Diff / 2
+                // Payment calculations - Both ROI >= 1 and ROI < 1 pay Flat Fee Rewards Diff / 2
+                let paymentOnBonus = settlement.bonusDiff / 2;  // M+1: Always Rewards Diff / 2
                 let paymentOnCommission = 0;  // M+2
                 
                 if (isProfitableRoi) {
@@ -527,13 +527,13 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
                       {formatFullCurrency(paymentOnBonus)}
                       <div className="text-[9px] text-slate-400">
-                        Bonus Diff / 2
+                        Rewards Diff / 2
                       </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
                       {formatFullCurrency(paymentOnCommission)}
                       <div className="text-[9px] text-slate-400">
-                        {isProfitableRoi ? 'Profit/2 + Spend - BonusDiff/2' : 'Commission only'}
+                        {isProfitableRoi ? 'Profit/2 + Spend - RewardsDiff/2' : 'Commission only'}
                       </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
@@ -587,11 +587,270 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
           <h4 className="text-xs font-semibold text-purple-800 mb-2">Payment Logic ({dataMonth} Data)</h4>
           <div className="text-xs text-purple-700 space-y-1">
             <p><strong>Both ROI ≥ 1 and ROI &lt; 1:</strong></p>
-            <p className="ml-2">• {bonusMonth} Bonus (M+1): Pay <code className="bg-white px-1 rounded">Bonus Diff / 2</code></p>
+            <p className="ml-2">• {bonusMonth} Flat Fee Rewards (M+1): Pay <code className="bg-white px-1 rounded">Rewards Diff / 2</code></p>
             <p className="mt-2"><strong>If Commission ROI ≥ 1 (Profitable):</strong></p>
-            <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Bonus Diff/2</code></p>
+            <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Rewards Diff/2</code></p>
             <p className="mt-2"><strong>If Commission ROI &lt; 1 (Loss):</strong></p>
             <p className="ml-2">• {commissionMonth} Commission (M+2): Pay <code className="bg-white px-1 rounded">Commission only</code> (Tecdo absorbs the Ad Spend loss)</p>
+          </div>
+        </div>
+      </div>
+        );
+      })()}
+
+      {/* Email Templates Section */}
+      {hasValidBonusCalData && (() => {
+        const dataMonth = startDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const rewardsMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+        const commissionMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 2, 1);
+        const rewardsMonthStr = rewardsMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const commissionMonthStr = commissionMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const rewardsDueDate = new Date(rewardsMonth.getFullYear(), rewardsMonth.getMonth(), 10).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const commissionDueDate = new Date(commissionMonth.getFullYear(), commissionMonth.getMonth(), 10).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        
+        return (
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-cyan-50">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            Settlement Email Templates
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Click on a creator to generate their personalized email template
+          </p>
+        </div>
+        
+        <div className="p-4 space-y-4">
+          {/* Template Type Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* M+1 Template - Flat Fee Rewards */}
+            <div className="border border-purple-200 rounded-lg p-4 bg-purple-50/50">
+              <h4 className="font-semibold text-purple-800 text-sm mb-2">📧 M+1: Flat Fee Rewards Email</h4>
+              <p className="text-xs text-purple-600 mb-3">Send in {rewardsMonthStr} (Due: {rewardsDueDate})</p>
+              <p className="text-xs text-slate-600 mb-2"><strong>For:</strong> All creators</p>
+              <p className="text-xs text-slate-600"><strong>Payment:</strong> Flat Fee Rewards Diff / 2</p>
+            </div>
+            
+            {/* M+2 Template - ROI >= 1 */}
+            <div className="border border-green-200 rounded-lg p-4 bg-green-50/50">
+              <h4 className="font-semibold text-green-800 text-sm mb-2">📧 M+2: Commission Email (ROI ≥ 1)</h4>
+              <p className="text-xs text-green-600 mb-3">Send in {commissionMonthStr} (Due: {commissionDueDate})</p>
+              <p className="text-xs text-slate-600 mb-2"><strong>For:</strong> Profitable creators</p>
+              <p className="text-xs text-slate-600"><strong>Payment:</strong> Profit/2 + Spend - Rewards Diff/2</p>
+            </div>
+            
+            {/* M+2 Template - ROI < 1 */}
+            <div className="border border-amber-200 rounded-lg p-4 bg-amber-50/50">
+              <h4 className="font-semibold text-amber-800 text-sm mb-2">📧 M+2: Commission Email (ROI &lt; 1)</h4>
+              <p className="text-xs text-amber-600 mb-3">Send in {commissionMonthStr} (Due: {commissionDueDate})</p>
+              <p className="text-xs text-slate-600 mb-2"><strong>For:</strong> Loss creators</p>
+              <p className="text-xs text-slate-600"><strong>Payment:</strong> Commission only</p>
+            </div>
+          </div>
+          
+          {/* Creator-specific emails */}
+          <div className="border-t border-slate-200 pt-4">
+            <h4 className="font-semibold text-slate-700 text-sm mb-3">Generated Emails by Creator</h4>
+            <div className="space-y-3 max-h-[500px] overflow-y-auto">
+              {sortedSettlements.map((s) => {
+                const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
+                const isProfitable = roi >= 1;
+                const rewardsPayment = s.bonusDiff / 2;
+                const commissionPayment = isProfitable 
+                  ? s.profit / 2 + s.adSpend - s.bonusDiff / 2 
+                  : s.commissionEarning;
+                const firstName = s.creatorName.split(' ')[0];
+                
+                return (
+                  <details key={s.creatorName} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <summary className="px-4 py-3 bg-slate-50 cursor-pointer hover:bg-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isProfitable ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        <span className="font-medium text-slate-800">{s.creatorName}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${isProfitable ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                          ROI: {roi.toFixed(2)}x
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-500">Click to expand</span>
+                    </summary>
+                    
+                    <div className="p-4 space-y-4 bg-white">
+                      {/* M+1 Email */}
+                      <div className="border border-purple-200 rounded-lg p-3 bg-purple-50/30">
+                        <div className="flex justify-between items-center mb-2">
+                          <h5 className="font-semibold text-purple-800 text-xs">M+1: Flat Fee Rewards Email ({rewardsMonthStr})</h5>
+                          <button 
+                            onClick={() => navigator.clipboard.writeText(`Dear ${firstName},
+
+Hope all's well. We've wrapped up the settlement of ${dataMonth} Flat Fee Rewards for ${s.creatorName}.
+
+Payment Summary:
+Amount payable to Tecdo: ${formatFullCurrency(rewardsPayment)}
+Payment due date: ${rewardsDueDate}
+
+Flat Fee Rewards:
+Total Flat Fee Rewards: ${formatFullCurrency(s.totalTierBonus)}
+Organic Flat Fee Rewards: ${formatFullCurrency(s.organicTierBonus)}
+Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
+
+Flat Fee Rewards Payment (50% × Flat Fee Rewards Diff): ${formatFullCurrency(rewardsPayment)}
+
+Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
+
+Supporting Amazon screenshots are attached for reference. Thank you, and happy to clarify if you need anything further.
+
+Best Regards,
+Tec-do Billing`)}
+                            className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <pre className="text-xs text-slate-700 whitespace-pre-wrap font-mono bg-white p-3 rounded border border-purple-100 max-h-[200px] overflow-y-auto">
+{`Dear ${firstName},
+
+Hope all's well. We've wrapped up the settlement of ${dataMonth} Flat Fee Rewards for ${s.creatorName}.
+
+Payment Summary:
+Amount payable to Tecdo: ${formatFullCurrency(rewardsPayment)}
+Payment due date: ${rewardsDueDate}
+
+Flat Fee Rewards:
+Total Flat Fee Rewards: ${formatFullCurrency(s.totalTierBonus)}
+Organic Flat Fee Rewards: ${formatFullCurrency(s.organicTierBonus)}
+Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
+
+Flat Fee Rewards Payment (50% × Flat Fee Rewards Diff): ${formatFullCurrency(rewardsPayment)}
+
+Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
+
+Best Regards,
+Tec-do Billing`}
+                        </pre>
+                      </div>
+                      
+                      {/* M+2 Email */}
+                      <div className={`border rounded-lg p-3 ${isProfitable ? 'border-green-200 bg-green-50/30' : 'border-amber-200 bg-amber-50/30'}`}>
+                        <div className="flex justify-between items-center mb-2">
+                          <h5 className={`font-semibold text-xs ${isProfitable ? 'text-green-800' : 'text-amber-800'}`}>
+                            M+2: Commission Email ({commissionMonthStr}) - {isProfitable ? 'Profitable' : 'Loss'}
+                          </h5>
+                          <button 
+                            onClick={() => navigator.clipboard.writeText(isProfitable ? `Dear ${firstName},
+
+Hope all's well. We've wrapped up the settlement of ${dataMonth} Commission for ${s.creatorName}.
+
+Payment Summary:
+Amount payable to Tecdo: ${formatFullCurrency(commissionPayment)}
+Payment due date: ${commissionDueDate}
+
+Commission:
+Commission from Ads: ${formatFullCurrency(s.commissionEarning)}
+
+Flat Fee Rewards (already settled in ${rewardsMonthStr}):
+Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
+Flat Fee Rewards Payment (50%): ${formatFullCurrency(rewardsPayment)}
+
+Ad Spend: ${formatFullCurrency(s.adSpend)}
+
+Total Profit: ${formatFullCurrency(s.profit)}
+(Commission + Flat Fee Rewards Diff - Ad Spend)
+
+Commission Payment: ${formatFullCurrency(commissionPayment)}
+(50% × Total Profit + Ad Spend - Flat Fee Rewards Payment)
+
+Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
+
+Best Regards,
+Tec-do Billing` : `Dear ${firstName},
+
+Hope all's well. We've wrapped up the settlement of ${dataMonth} Commission for ${s.creatorName}.
+
+Payment Summary:
+Amount payable to Tecdo: ${formatFullCurrency(commissionPayment)}
+Payment due date: ${commissionDueDate}
+
+Commission:
+Commission from Ads: ${formatFullCurrency(s.commissionEarning)}
+
+Flat Fee Rewards (already settled in ${rewardsMonthStr}):
+Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
+Flat Fee Rewards Payment (50%): ${formatFullCurrency(rewardsPayment)}
+
+Ad Spend: ${formatFullCurrency(s.adSpend)}
+
+Total Profit: ${formatFullCurrency(s.profit)}
+(Commission + Flat Fee Rewards Diff - Ad Spend)
+
+Note: Since Commission ROI < 1, Tecdo absorbs the Ad Spend loss.
+Commission Payment: ${formatFullCurrency(commissionPayment)} (Commission only)
+
+Please confirm the above amount within 3 business days. If we do not hear back, we will proceed with invoicing accordingly.
+
+Best Regards,
+Tec-do Billing`)}
+                            className={`text-xs px-2 py-1 rounded hover:opacity-80 ${isProfitable ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <pre className="text-xs text-slate-700 whitespace-pre-wrap font-mono bg-white p-3 rounded border max-h-[200px] overflow-y-auto">
+{isProfitable ? `Dear ${firstName},
+
+Hope all's well. We've wrapped up the settlement of ${dataMonth} Commission for ${s.creatorName}.
+
+Payment Summary:
+Amount payable to Tecdo: ${formatFullCurrency(commissionPayment)}
+Payment due date: ${commissionDueDate}
+
+Commission:
+Commission from Ads: ${formatFullCurrency(s.commissionEarning)}
+
+Flat Fee Rewards (already settled in ${rewardsMonthStr}):
+Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
+Flat Fee Rewards Payment (50%): ${formatFullCurrency(rewardsPayment)}
+
+Ad Spend: ${formatFullCurrency(s.adSpend)}
+
+Total Profit: ${formatFullCurrency(s.profit)}
+(Commission + Flat Fee Rewards Diff - Ad Spend)
+
+Commission Payment: ${formatFullCurrency(commissionPayment)}
+(50% × Total Profit + Ad Spend - Flat Fee Rewards Payment)
+
+Best Regards,
+Tec-do Billing` : `Dear ${firstName},
+
+Hope all's well. We've wrapped up the settlement of ${dataMonth} Commission for ${s.creatorName}.
+
+Payment Summary:
+Amount payable to Tecdo: ${formatFullCurrency(commissionPayment)}
+Payment due date: ${commissionDueDate}
+
+Commission:
+Commission from Ads: ${formatFullCurrency(s.commissionEarning)}
+
+Flat Fee Rewards (already settled in ${rewardsMonthStr}):
+Flat Fee Rewards Diff: ${formatFullCurrency(s.bonusDiff)}
+Flat Fee Rewards Payment (50%): ${formatFullCurrency(rewardsPayment)}
+
+Ad Spend: ${formatFullCurrency(s.adSpend)}
+
+Total Profit: ${formatFullCurrency(s.profit)}
+(Commission + Flat Fee Rewards Diff - Ad Spend)
+
+Note: Since Commission ROI < 1, Tecdo absorbs the Ad Spend loss.
+Commission Payment: ${formatFullCurrency(commissionPayment)} (Commission only)
+
+Best Regards,
+Tec-do Billing`}
+                        </pre>
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -611,13 +870,13 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
             <p className="ml-4">- Weekly/Other: Ad data → earning (discounted GMV × creator ratio)</p>
           </div>
           <div>
-            <p className="font-semibold mb-1">Bonus Diff:</p>
-            <p className="ml-2">= Projected Tier Bonus - Organic Tier Bonus</p>
+            <p className="font-semibold mb-1">Flat Fee Rewards Diff:</p>
+            <p className="ml-2">= Projected Tier Rewards - Organic Tier Rewards</p>
             <p className="ml-2 text-amber-600">Weekly: prorated by period ratio (e.g., 7/30 for a week)</p>
           </div>
           <div>
             <p className="font-semibold mb-1">Formulas:</p>
-            <p className="ml-2">• <strong>Total Earning</strong> = Commission + Bonus Diff</p>
+            <p className="ml-2">• <strong>Total Earning</strong> = Commission + Flat Fee Rewards Diff</p>
             <p className="ml-2">• <strong>Total Profit</strong> = Total Earning - Ad Spend</p>
           </div>
           <div>
