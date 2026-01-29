@@ -1,5 +1,4 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Activity, Layers } from 'lucide-react';
 
 interface KpiCardProps {
   title: string;
@@ -17,12 +16,6 @@ export const KpiCard: React.FC<KpiCardProps> = ({ title, value, type = 'number',
     ? `${Number(value).toFixed(2)}`
     : value;
 
-  const Icon = title.toLowerCase().includes('spend') ? DollarSign 
-             : title.toLowerCase().includes('roi') ? Activity 
-             : title.toLowerCase().includes('earning') ? TrendingUp 
-             : title.toLowerCase().includes('posts') ? Layers
-             : TrendingUp;
-
   const colorClasses: Record<string, string> = {
     indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
     green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -34,15 +27,10 @@ export const KpiCard: React.FC<KpiCardProps> = ({ title, value, type = 'number',
   return (
     <div 
       onClick={onClick}
-      className={`p-4 rounded-xl border ${colorClasses[color] || colorClasses.indigo} shadow-sm flex items-start justify-between transition-all hover:-translate-y-1 ${onClick ? 'cursor-pointer hover:shadow-md ring-2 ring-transparent hover:ring-indigo-100' : ''}`}
+      className={`p-4 rounded-xl border ${colorClasses[color] || colorClasses.indigo} shadow-sm transition-all hover:-translate-y-1 ${onClick ? 'cursor-pointer hover:shadow-md ring-2 ring-transparent hover:ring-indigo-100' : ''}`}
     >
-      <div>
-        <p className="text-sm font-medium opacity-80 mb-1">{title}</p>
-        <h3 className="text-2xl font-bold">{formattedValue}</h3>
-      </div>
-      <div className={`p-2 rounded-lg bg-white/50 backdrop-blur-sm`}>
-        <Icon className="w-5 h-5" />
-      </div>
+      <p className="text-sm font-medium opacity-80 mb-1">{title}</p>
+      <h3 className="text-2xl font-bold">{formattedValue}</h3>
     </div>
   );
 };
