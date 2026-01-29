@@ -503,13 +503,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                   paymentOnCommission = settlement.profit / 2 + settlement.adSpend - settlement.bonusDiff / 2;
                 } else {
                   // ROI < 1: 达人亏损
-                  // 收到Commission时：支付全部 Commission-Ads
-                  paymentOnCommission = settlement.commissionEarning;
-                  // 收到Bonus时：支付剩余 (Ad Spend - Commission 已支付的部分，如果还有缺口)
-                  // 剩余 = Ad Spend - Commission + Bonus Diff 的一部分用于弥补
-                  // 简化：如果亏损，Bonus全部用于弥补亏损
-                  paymentOnBonus = Math.min(settlement.bonusDiff, settlement.adSpend - settlement.commissionEarning);
-                  if (paymentOnBonus < 0) paymentOnBonus = 0;
+                  // 收到Commission时 (M+2)：支付全部 Commission-Ads + Ad Spend
+                  paymentOnCommission = settlement.commissionEarning + settlement.adSpend;
+                  // 收到Bonus时 (M+1)：无需额外支付（已在M+2全部结清）
+                  paymentOnBonus = 0;
                 }
                 
                 const totalPayment = paymentOnBonus + paymentOnCommission;
@@ -528,13 +525,13 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-purple-600">
                       {formatFullCurrency(paymentOnBonus)}
                       <div className="text-[9px] text-slate-400">
-                        {isProfitableRoi ? 'Bonus Diff / 2' : '弥补亏损'}
+                        {isProfitableRoi ? 'Bonus Diff / 2' : '无需支付'}
                       </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
                       {formatFullCurrency(paymentOnCommission)}
                       <div className="text-[9px] text-slate-400">
-                        {isProfitableRoi ? 'Profit/2 + Spend - BonusDiff/2' : '全部Commission'}
+                        {isProfitableRoi ? 'Profit/2 + Spend - BonusDiff/2' : 'Commission + Ad Spend'}
                       </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
@@ -561,14 +558,14 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
                     const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
                     if (roi >= 1) return sum + s.bonusDiff / 2;
-                    return sum + Math.max(0, Math.min(s.bonusDiff, s.adSpend - s.commissionEarning));
+                    return sum; // ROI < 1: no payment on bonus
                   }, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-indigo-600">
                   {formatFullCurrency(sortedSettlements.reduce((sum, s) => {
                     const roi = s.adSpend > 0 ? s.commissionEarning / s.adSpend : 0;
                     if (roi >= 1) return sum + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
-                    return sum + s.commissionEarning;
+                    return sum + s.commissionEarning + s.adSpend; // ROI < 1: Commission + Ad Spend
                   }, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold text-slate-900">
@@ -577,8 +574,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
                     if (roi >= 1) {
                       return sum + s.bonusDiff / 2 + s.profit / 2 + s.adSpend - s.bonusDiff / 2;
                     }
-                    const payBonus = Math.max(0, Math.min(s.bonusDiff, s.adSpend - s.commissionEarning));
-                    return sum + s.commissionEarning + payBonus;
+                    return sum + s.commissionEarning + s.adSpend; // ROI < 1: Commission + Ad Spend
                   }, 0))}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap text-center">-</td>
@@ -595,8 +591,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
             <p className="ml-2">• 收到 Bonus (M+1): 支付 <code className="bg-white px-1 rounded">Bonus Diff / 2</code></p>
             <p className="ml-2">• 收到 Commission (M+2): 支付 <code className="bg-white px-1 rounded">Profit/2 + Ad Spend - Bonus Diff/2</code></p>
             <p className="mt-2"><strong>If Commission ROI &lt; 1 (亏损):</strong></p>
-            <p className="ml-2">• 收到 Commission (M+2): 支付 <code className="bg-white px-1 rounded">全部 Commission-Ads</code></p>
-            <p className="ml-2">• 收到 Bonus (M+1): 支付 <code className="bg-white px-1 rounded">剩余部分用于弥补亏损</code></p>
+            <p className="ml-2">• 收到 Commission (M+2): 支付 <code className="bg-white px-1 rounded">Commission-Ads + Ad Spend</code></p>
+            <p className="ml-2">• 收到 Bonus (M+1): <code className="bg-white px-1 rounded">无需额外支付</code></p>
           </div>
         </div>
       </div>

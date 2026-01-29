@@ -352,6 +352,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   const [deepDiveRoiFilter, setDeepDiveRoiFilter] = useState<'all' | 'high' | 'low'>('all');
   const [deepDiveUseLogScale, setDeepDiveUseLogScale] = useState(false);
   const [deepDiveSearch, setDeepDiveSearch] = useState<string>('');
+  const [deepDiveStatusFilter, setDeepDiveStatusFilter] = useState<'all' | 'active' | 'off'>('all');
 
   const drillOptions = useMemo(() => {
     if (drillDimension === 'all') return [];
@@ -1488,6 +1489,17 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         />
                     </div>
                     
+                    {/* Status Filter */}
+                    <select
+                        value={deepDiveStatusFilter}
+                        onChange={(e) => setDeepDiveStatusFilter(e.target.value as any)}
+                        className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="all">All Status</option>
+                        <option value="active">Active Only</option>
+                        <option value="off">Off Only</option>
+                    </select>
+                    
                     <div className="flex gap-2 items-center bg-white border border-slate-300 rounded-lg p-1 shadow-sm">
                         <select value={drillDimension} onChange={(e) => setDrillDimension(e.target.value as any)} className="bg-transparent border-none text-slate-700 py-1 px-2 text-sm focus:ring-0 font-medium">
                             <option value="category">Category</option>
@@ -1641,20 +1653,27 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
             <span className="text-sm text-slate-600">
                 Showing <strong className="text-indigo-600">
                     {postsInSegmentAggregated.filter(post => {
-                        if (!deepDiveSearch.trim()) return true;
-                        const searchLower = deepDiveSearch.toLowerCase();
-                        return post.contentName.toLowerCase().includes(searchLower) || 
-                               post.creator.toLowerCase().includes(searchLower);
+                        if (deepDiveSearch.trim()) {
+                            const searchLower = deepDiveSearch.toLowerCase();
+                            if (!post.contentName.toLowerCase().includes(searchLower) && 
+                                !post.creator.toLowerCase().includes(searchLower)) {
+                                return false;
+                            }
+                        }
+                        if (deepDiveStatusFilter === 'active' && !post.isActive) return false;
+                        if (deepDiveStatusFilter === 'off' && post.isActive) return false;
+                        return true;
                     }).length}
                 </strong> of {postsInSegmentAggregated.length} posts
-                {deepDiveSearch && <span className="ml-2 text-slate-400">• searching "{deepDiveSearch}"</span>}
+                {deepDiveSearch && <span className="ml-2 text-slate-400">• "{deepDiveSearch}"</span>}
+                {deepDiveStatusFilter !== 'all' && <span className="ml-2 text-slate-400">• {deepDiveStatusFilter === 'active' ? 'Active' : 'Off'}</span>}
             </span>
-            {deepDiveSearch && (
+            {(deepDiveSearch || deepDiveStatusFilter !== 'all') && (
                 <button 
-                    onClick={() => setDeepDiveSearch('')}
+                    onClick={() => { setDeepDiveSearch(''); setDeepDiveStatusFilter('all'); }}
                     className="text-xs text-slate-500 hover:text-indigo-600 flex items-center gap-1"
                 >
-                    <FilterX className="w-3 h-3" /> Clear search
+                    <FilterX className="w-3 h-3" /> Clear filters
                 </button>
             )}
         </div>
@@ -1698,10 +1717,18 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         <tbody className="bg-white divide-y divide-slate-100">
                             {postsInSegmentAggregated
                                 .filter(post => {
-                                    if (!deepDiveSearch.trim()) return true;
-                                    const searchLower = deepDiveSearch.toLowerCase();
-                                    return post.contentName.toLowerCase().includes(searchLower) || 
-                                           post.creator.toLowerCase().includes(searchLower);
+                                    // Search filter
+                                    if (deepDiveSearch.trim()) {
+                                        const searchLower = deepDiveSearch.toLowerCase();
+                                        if (!post.contentName.toLowerCase().includes(searchLower) && 
+                                            !post.creator.toLowerCase().includes(searchLower)) {
+                                            return false;
+                                        }
+                                    }
+                                    // Status filter
+                                    if (deepDiveStatusFilter === 'active' && !post.isActive) return false;
+                                    if (deepDiveStatusFilter === 'off' && post.isActive) return false;
+                                    return true;
                                 })
                                 .map((post, idx) => {
                                 const isSelected = selectedPosts.includes(post.contentName);
