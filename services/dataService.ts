@@ -235,7 +235,30 @@ export const fetchPostLinks = async (): Promise<Map<string, PostLinks>> => {
   }
 };
 
-// Fetch Bonus Cal data for tier tracking
+// Parse date string like "2026/1/31" to "YYYY-MM" format
+// Moved before fetchBonusCalData so it can be used by both functions
+const parseBonusCalDate = (dateStr: string): string => {
+  if (!dateStr) return '';
+  // Handle formats: "2026/1/31", "2026-1-31", "1/31/2026"
+  const parts = dateStr.split(/[\/\-]/);
+  if (parts.length < 2) return '';
+  
+  let year: number, month: number;
+  if (parts[0].length === 4) {
+    // Format: 2026/1/31 or 2026-1-31
+    year = parseInt(parts[0]);
+    month = parseInt(parts[1]);
+  } else {
+    // Format: 1/31/2026
+    month = parseInt(parts[0]);
+    year = parseInt(parts[2]);
+  }
+  
+  if (isNaN(year) || isNaN(month)) return '';
+  return `${year}-${String(month).padStart(2, '0')}`;
+};
+
+// Fetch Bonus Cal data for tier tracking (used by TierRewardsTracker)
 export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
   try {
     const response = await fetch(BONUS_CAL_CSV_URL);
@@ -251,6 +274,7 @@ export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
     
     // Find column indices for Bonus Cal data
     const idx = {
+      date: headers.findIndex(h => h === 'date' || h.includes('date')),
       creator: headers.findIndex(h => h.includes('creator') || h.includes('name')),
       salesUpToDate: headers.findIndex(h => h.includes('sales') && h.includes('up to date')),
       tier1Sales: headers.findIndex(h => h.includes('tier-1') && h.includes('sales')),
@@ -267,6 +291,9 @@ export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
 
     const creatorTierData: CreatorTierData[] = lines.slice(1).map(line => {
       const vals = parseCSVLine(line);
+      
+      // Parse date to get dataMonth
+      const dataMonth = idx.date !== -1 ? parseBonusCalDate(vals[idx.date]) : '';
       
       const tiers: TierLevel[] = [];
       
@@ -290,10 +317,11 @@ export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
 
       return {
         creatorName: idx.creator !== -1 ? vals[idx.creator]?.trim() || 'Unknown' : 'Unknown',
+        dataMonth,
         currentShippedRevenue: idx.salesUpToDate !== -1 ? parseCurrency(vals[idx.salesUpToDate]) : 0,
         tiers,
       };
-    }).filter(d => d.creatorName !== 'Unknown' && d.tiers.length > 0);
+    }).filter(d => d.creatorName !== 'Unknown' && d.tiers.length > 0 && d.dataMonth !== '');
 
     return creatorTierData;
 
@@ -301,28 +329,6 @@ export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
     console.error("Error loading bonus cal data:", error);
     return [];
   }
-};
-
-// Parse date string like "2026/1/31" to "YYYY-MM" format
-const parseBonusCalDate = (dateStr: string): string => {
-  if (!dateStr) return '';
-  // Handle formats: "2026/1/31", "2026-1-31", "1/31/2026"
-  const parts = dateStr.split(/[\/\-]/);
-  if (parts.length < 2) return '';
-  
-  let year: number, month: number;
-  if (parts[0].length === 4) {
-    // Format: 2026/1/31 or 2026-1-31
-    year = parseInt(parts[0]);
-    month = parseInt(parts[1]);
-  } else {
-    // Format: 1/31/2026
-    month = parseInt(parts[0]);
-    year = parseInt(parts[2]);
-  }
-  
-  if (isNaN(year) || isNaN(month)) return '';
-  return `${year}-${String(month).padStart(2, '0')}`;
 };
 
 // Fetch extended Bonus Cal data with organic/ads breakdown for earnings calculation

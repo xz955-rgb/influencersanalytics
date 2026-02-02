@@ -46,6 +46,7 @@ export interface TierLevel {
 
 export interface CreatorTierData {
   creatorName: string;
+  dataMonth: string;              // Month of data in "YYYY-MM" format (e.g., "2026-01")
   currentShippedRevenue: number;  // Sales-up to date
   tiers: TierLevel[];             // Up to 5 tiers per creator
 }

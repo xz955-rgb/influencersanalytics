@@ -141,7 +141,32 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
     }
   }, [tierProgressList, selectedCreator]);
 
-  if (tierProgressList.length === 0) return null;
+  if (tierProgressList.length === 0) {
+    return (
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
+            <Target className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">Creator Rewards Tier Tracker</h3>
+            <p className="text-xs text-slate-500">
+              <Calendar className="w-3 h-3 inline mr-1" />
+              {daysRemaining} days remaining this month
+            </p>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border border-amber-100 p-6 text-center">
+          <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+          <h4 className="font-semibold text-slate-700 mb-2">No Tier Data for This Month</h4>
+          <p className="text-sm text-slate-500">
+            Bonus Cal data for the current month is not yet available.<br />
+            Please update the Google Sheet with this month's data.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const currentProgress = tierProgressList.find(p => p.creatorName === selectedCreator) || tierProgressList[0];
   const currentTierData = tierData.find(t => t.creatorName === selectedCreator) || tierData[0];

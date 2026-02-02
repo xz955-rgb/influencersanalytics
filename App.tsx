@@ -65,6 +65,15 @@ const App: React.FC = () => {
     };
   }, [data]);
 
+  // Filter tierData by current month - don't show old month's data
+  const currentMonthTierData = useMemo(() => {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const filtered = tierData.filter(d => d.dataMonth === currentMonth);
+    // If no data for current month, return empty array (will show message in TierRewardsTracker)
+    return filtered;
+  }, [tierData]);
+
   // Apply Filters
   const filteredData = useMemo(() => {
     return data.filter(item => {
@@ -164,7 +173,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} postLinks={postLinks} />}
+                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={currentMonthTierData} postLinks={postLinks} />}
                 {activeTab === 'lifecycle' && <LifecyclePerformance data={filteredData} />}
                 {activeTab === 'earnings' && <EarningsTab adData={data} bonusCalData={bonusCalData} />}
             </div>
