@@ -87,6 +87,7 @@ export interface TierProgress {
 // Extended Creator Tier Data with organic/ads breakdown
 export interface CreatorBonusCalData {
   creatorName: string;
+  dataMonth: string;              // Month of data in "YYYY-MM" format (e.g., "2026-01")
   totalShippedRevenue: number;    // Sales (up to date)
   shippedRevOrganic: number;      // Shipped Rev.-Organic
   shippedRevAds: number;          // Shipped Rev.-Ads

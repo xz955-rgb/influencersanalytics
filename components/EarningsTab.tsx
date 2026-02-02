@@ -62,6 +62,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [sortField, setSortField] = useState<keyof CreatorSettlement>('adSpend');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [emailMonthFilter, setEmailMonthFilter] = useState<string>(''); // For email section month filter
 
   const { startDate, endDate } = useMemo(() => {
     if (timePreset === 'custom' && customStartDate && customEndDate) {
@@ -73,9 +74,34 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
 
   const isMonthlyPeriod = timePreset === 'this_month' || timePreset === 'last_month';
 
-  // This Month, Last Month, This Week, Last Week all use Bonus Cal when available (do not only keep latest month)
-  const hasValidBonusCalData = timePreset === 'this_month' || timePreset === 'last_month' || timePreset === 'this_week' || timePreset === 'last_week';
-  const hasFullBonusCalData = timePreset === 'this_month' || timePreset === 'last_month';
+  // Get the month string (YYYY-MM) for the selected period
+  const selectedMonth = useMemo(() => {
+    const year = startDate.getFullYear();
+    const month = startDate.getMonth() + 1;
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }, [startDate]);
+
+  // Get available months from Bonus Cal data
+  const availableBonusCalMonths = useMemo(() => {
+    const months = new Set<string>();
+    bonusCalData.forEach(d => {
+      if (d.dataMonth) months.add(d.dataMonth);
+    });
+    return Array.from(months).sort().reverse(); // Most recent first
+  }, [bonusCalData]);
+
+  // Filter Bonus Cal data by selected month - ONLY use data for the matching month
+  const filteredBonusCalData = useMemo(() => {
+    return bonusCalData.filter(d => d.dataMonth === selectedMonth);
+  }, [bonusCalData, selectedMonth]);
+
+  // Check if we have Bonus Cal data for the selected month
+  const hasBonusCalDataForMonth = filteredBonusCalData.length > 0;
+
+  // This Month, Last Month, This Week, Last Week can show data, but ONLY if we have Bonus Cal for that month
+  const isValidPeriodType = timePreset === 'this_month' || timePreset === 'last_month' || timePreset === 'this_week' || timePreset === 'last_week';
+  const hasValidBonusCalData = isValidPeriodType && hasBonusCalDataForMonth;
+  const hasFullBonusCalData = (timePreset === 'this_month' || timePreset === 'last_month') && hasBonusCalDataForMonth;
 
   const earningsSummary: EarningsSummary = useMemo(() => {
     if (!hasValidBonusCalData) {
@@ -84,8 +110,9 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
         totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [],
       };
     }
-    return calculateCreatorSettlements(adData, bonusCalData, startDate, endDate, isMonthlyPeriod);
-  }, [adData, bonusCalData, startDate, endDate, isMonthlyPeriod, hasValidBonusCalData]);
+    // Use filtered Bonus Cal data (only for the selected month)
+    return calculateCreatorSettlements(adData, filteredBonusCalData, startDate, endDate, isMonthlyPeriod);
+  }, [adData, filteredBonusCalData, startDate, endDate, isMonthlyPeriod, hasValidBonusCalData]);
 
   const sortedSettlements = useMemo(() => {
     const sorted = [...earningsSummary.creatorSettlements];
@@ -178,15 +205,47 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
       {!hasValidBonusCalData && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-amber-800 mb-2">Historical Data Not Available</h3>
+          <h3 className="text-lg font-semibold text-amber-800 mb-2">Bonus Cal Data Not Available</h3>
           <p className="text-sm text-amber-700 max-w-md mx-auto">
-            Bonus Cal data for <strong>{timePreset === 'this_quarter' ? 'This Quarter' : 'this period'}</strong> is not yet available.
-            <br /><br />
-            Available: <strong>This Month / Last Month</strong> (Bonus Cal), <strong>This Week / Last Week</strong> (Ad data + prorated Bonus Diff).
+            {isValidPeriodType && !hasBonusCalDataForMonth ? (
+              <>
+                No Bonus Cal data for <strong>{new Date(startDate).toLocaleString('en-US', { month: 'long', year: 'numeric' })}</strong>.
+                <br /><br />
+                Available months: {availableBonusCalMonths.length > 0 
+                  ? availableBonusCalMonths.map(m => {
+                      const [y, mon] = m.split('-');
+                      return new Date(parseInt(y), parseInt(mon) - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+                    }).join(', ')
+                  : 'None'}
+              </>
+            ) : (
+              <>
+                Bonus Cal data for <strong>{timePreset === 'this_quarter' ? 'This Quarter' : 'this period'}</strong> is not supported.
+                <br /><br />
+                Please select <strong>This Month</strong> or <strong>Last Month</strong>.
+              </>
+            )}
           </p>
-          <button onClick={() => setTimePreset('this_month')} className="mt-4 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-medium">
-            View This Month Data
-          </button>
+          {availableBonusCalMonths.length > 0 && (
+            <div className="mt-4 flex justify-center gap-2 flex-wrap">
+              {availableBonusCalMonths.slice(0, 3).map(m => {
+                const [y, mon] = m.split('-');
+                const monthDate = new Date(parseInt(y), parseInt(mon) - 1);
+                const now = new Date();
+                const isThisMonth = monthDate.getFullYear() === now.getFullYear() && monthDate.getMonth() === now.getMonth();
+                const isLastMonth = monthDate.getFullYear() === now.getFullYear() && monthDate.getMonth() === now.getMonth() - 1;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setTimePreset(isThisMonth ? 'this_month' : isLastMonth ? 'last_month' : 'this_month')}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-medium"
+                  >
+                    View {monthDate.toLocaleString('en-US', { month: 'short', year: 'numeric' })}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -342,10 +401,26 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
         );
       })()}
 
-      {hasValidBonusCalData && (() => {
-        const dataMonth = startDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-        const rewardsMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
-        const commissionMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 2, 1);
+      {/* Settlement Email Section - Has its own month filter */}
+      {availableBonusCalMonths.length > 0 && (() => {
+        // Use email filter month if set, otherwise use first available month
+        const effectiveEmailMonth = emailMonthFilter || availableBonusCalMonths[0];
+        const [emailYear, emailMon] = effectiveEmailMonth.split('-').map(Number);
+        const emailMonthDate = new Date(emailYear, emailMon - 1, 1);
+        
+        // Get Bonus Cal data for email month
+        const emailBonusCalData = bonusCalData.filter(d => d.dataMonth === effectiveEmailMonth);
+        
+        // Calculate settlements for email month (need ad data for that month too)
+        const emailMonthStart = new Date(emailYear, emailMon - 1, 1);
+        const emailMonthEnd = new Date(emailYear, emailMon, 0);
+        const emailSettlements = emailBonusCalData.length > 0 
+          ? calculateCreatorSettlements(adData, emailBonusCalData, emailMonthStart, emailMonthEnd, true).creatorSettlements
+          : [];
+        
+        const dataMonth = emailMonthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const rewardsMonth = new Date(emailYear, emailMon, 1);
+        const commissionMonth = new Date(emailYear, emailMon + 1, 1);
         const rewardsMonthStr = rewardsMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
         const commissionMonthStr = commissionMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
         const rewardsDueDate = new Date(rewardsMonth.getFullYear(), rewardsMonth.getMonth(), 10).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -353,11 +428,34 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
         return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-cyan-50">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Calendar className="w-4 h-4 text-blue-600" /> Settlement Email (Bonus + Commission)</h3>
-          <p className="text-xs text-slate-500 mt-1">One combined template per creator. Edit below then Copy.</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Calendar className="w-4 h-4 text-blue-600" /> Settlement Email (Bonus + Commission)</h3>
+              <p className="text-xs text-slate-500 mt-1">One combined template per creator. Edit below then Copy.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-slate-600">Data Month:</label>
+              <select
+                value={effectiveEmailMonth}
+                onChange={(e) => setEmailMonthFilter(e.target.value)}
+                className="appearance-none bg-white border border-slate-300 rounded-lg py-1.5 pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {availableBonusCalMonths.map(m => {
+                  const [y, mon] = m.split('-');
+                  const label = new Date(parseInt(y), parseInt(mon) - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+                  return <option key={m} value={m}>{label}</option>;
+                })}
+              </select>
+            </div>
+          </div>
         </div>
         <div className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
-          {sortedSettlements.map((s) => {
+          {emailSettlements.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+              <p className="text-sm">No settlement data for {dataMonth}</p>
+            </div>
+          ) : emailSettlements.map((s) => {
             const isProfitable = s.profit >= 0;
             const rewardsPayment = isProfitable ? s.bonusDiff / 2 : s.bonusDiff;
             const commissionPayment = isProfitable ? s.profit / 2 + s.adSpend - s.bonusDiff / 2 : s.commissionEarning;
