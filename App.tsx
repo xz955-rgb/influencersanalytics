@@ -65,14 +65,8 @@ const App: React.FC = () => {
     };
   }, [data]);
 
-  // Filter tierData by current month - don't show old month's data
-  const currentMonthTierData = useMemo(() => {
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const filtered = tierData.filter(d => d.dataMonth === currentMonth);
-    // If no data for current month, return empty array (will show message in TierRewardsTracker)
-    return filtered;
-  }, [tierData]);
+  // Pass full tierData to components - month filtering is now handled inside TierRewardsTracker
+  // This allows users to view historical months via the month selector
 
   // Apply Filters
   const filteredData = useMemo(() => {
@@ -173,7 +167,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={currentMonthTierData} postLinks={postLinks} />}
+                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} postLinks={postLinks} />}
                 {activeTab === 'lifecycle' && <LifecyclePerformance data={filteredData} />}
                 {activeTab === 'earnings' && <EarningsTab adData={data} bonusCalData={bonusCalData} />}
             </div>

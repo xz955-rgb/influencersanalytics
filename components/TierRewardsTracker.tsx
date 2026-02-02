@@ -9,17 +9,66 @@ interface TierRewardsTrackerProps {
 
 export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData, adData }) => {
   const [selectedCreator, setSelectedCreator] = useState<string>('');
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
 
+  // Get all available months from tier data, sorted descending (newest first)
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    tierData.forEach(t => {
+      if (t.dataMonth) months.add(t.dataMonth);
+    });
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [tierData]);
+
+  // Get current month in YYYY-MM format
+  const currentMonth = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  // Auto-select the latest month if no month selected, or reset if selected month is no longer available
+  React.useEffect(() => {
+    if (availableMonths.length > 0) {
+      if (!selectedMonth || !availableMonths.includes(selectedMonth)) {
+        setSelectedMonth(availableMonths[0]);
+      }
+    }
+  }, [availableMonths, selectedMonth]);
+
+  // Filter tier data by selected month
+  const filteredTierData = useMemo(() => {
+    if (!selectedMonth) return tierData;
+    return tierData.filter(t => t.dataMonth === selectedMonth);
+  }, [tierData, selectedMonth]);
+
+  // Check if selected month is current month (for showing days remaining)
+  const isCurrentMonth = selectedMonth === currentMonth;
+
+  // Calculate days remaining (only meaningful for current month)
   const daysRemaining = useMemo(() => {
+    if (!isCurrentMonth) {
+      return 0; // Historical month - no days remaining
+    }
     const now = new Date();
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const diffTime = endOfMonth.getTime() - now.getTime();
     return Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-  }, []);
+  }, [isCurrentMonth]);
 
-  // Per-post metrics using last 3 days
+  // Format month for display (e.g., "2026-01" -> "January 2026")
+  const formatMonthDisplay = (monthStr: string): string => {
+    if (!monthStr) return '';
+    const [year, month] = monthStr.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  // Per-post metrics using last 3 days (only for current month)
   const postEfficiencyByCreator = useMemo(() => {
     const result = new Map<string, PostEfficiency[]>();
+    
+    // Only calculate for current month since rush analysis is forward-looking
+    if (!isCurrentMonth) return result;
     
     const allDates = adData.map(d => d.date.getTime());
     if (allDates.length === 0) return result;
@@ -73,10 +122,10 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
     });
     
     return result;
-  }, [adData]);
+  }, [adData, isCurrentMonth]);
 
   const tierProgressList = useMemo((): TierProgress[] => {
-    return tierData.map(creator => {
+    return filteredTierData.map(creator => {
       const { creatorName, currentShippedRevenue, tiers } = creator;
       const sortedTiers = [...tiers].sort((a, b) => a.threshold - b.threshold);
       
@@ -99,9 +148,10 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
       const gapToNextTier = nextTier ? nextTier.threshold - currentShippedRevenue : 0;
       const dailyGmvNeeded = nextTier && daysRemaining > 0 ? gapToNextTier / daysRemaining : 0;
       
+      // Calculate rush analysis only for current month (forward-looking)
       let rushAnalysis: RushAnalysis | null = null;
       
-      if (nextTier && gapToNextTier > 0) {
+      if (nextTier && gapToNextTier > 0 && isCurrentMonth) {
         const posts = postEfficiencyByCreator.get(creatorName) || [];
         
         if (posts.length > 0) {
@@ -133,7 +183,7 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
         nextTier, gapToNextTier, daysRemaining, dailyGmvNeeded, rushAnalysis,
       };
     });
-  }, [tierData, daysRemaining, postEfficiencyByCreator]);
+  }, [filteredTierData, daysRemaining, postEfficiencyByCreator, isCurrentMonth]);
 
   React.useEffect(() => {
     if (tierProgressList.length > 0 && !selectedCreator) {
@@ -144,24 +194,47 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
   if (tierProgressList.length === 0) {
     return (
       <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 shadow-sm p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
-            <Target className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
+              <Target className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">Creator Rewards Tier Tracker</h3>
+              <p className="text-xs text-slate-500">
+                <Calendar className="w-3 h-3 inline mr-1" />
+                {selectedMonth ? formatMonthDisplay(selectedMonth) : 'No month selected'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-bold text-slate-800">Creator Rewards Tier Tracker</h3>
-            <p className="text-xs text-slate-500">
-              <Calendar className="w-3 h-3 inline mr-1" />
-              {daysRemaining} days remaining this month
-            </p>
-          </div>
+          {/* Month selector */}
+          {availableMonths.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setSelectedCreator(''); // Reset creator when month changes
+                }}
+                className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm"
+              >
+                {availableMonths.map((month) => (
+                  <option key={month} value={month}>
+                    {formatMonthDisplay(month)}
+                    {month === currentMonth ? ' (Current)' : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          )}
         </div>
         <div className="bg-white rounded-lg border border-amber-100 p-6 text-center">
           <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-          <h4 className="font-semibold text-slate-700 mb-2">No Tier Data for This Month</h4>
+          <h4 className="font-semibold text-slate-700 mb-2">No Tier Data for {formatMonthDisplay(selectedMonth) || 'This Month'}</h4>
           <p className="text-sm text-slate-500">
-            Bonus Cal data for the current month is not yet available.<br />
-            Please update the Google Sheet with this month's data.
+            Bonus Cal data for {formatMonthDisplay(selectedMonth) || 'the selected month'} is not available.<br />
+            {availableMonths.length > 1 ? 'Try selecting a different month.' : 'Please update the Google Sheet with this month\'s data.'}
           </p>
         </div>
       </div>
@@ -169,7 +242,7 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
   }
 
   const currentProgress = tierProgressList.find(p => p.creatorName === selectedCreator) || tierProgressList[0];
-  const currentTierData = tierData.find(t => t.creatorName === selectedCreator) || tierData[0];
+  const currentTierData = filteredTierData.find(t => t.creatorName === selectedCreator) || filteredTierData[0];
 
   return (
     <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 shadow-sm p-5">
@@ -182,31 +255,54 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
             <h3 className="text-lg font-bold text-slate-800">Creator Rewards Tier Tracker</h3>
             <p className="text-xs text-slate-500">
               <Calendar className="w-3 h-3 inline mr-1" />
-              {daysRemaining} days remaining this month
+              {isCurrentMonth ? `${daysRemaining} days remaining this month` : formatMonthDisplay(selectedMonth)}
             </p>
           </div>
         </div>
 
-        <div className="relative">
-          <select
-            value={selectedCreator}
-            onChange={(e) => setSelectedCreator(e.target.value)}
-            className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm"
-          >
-            {tierProgressList.map((p) => (
-              <option key={p.creatorName} value={p.creatorName}>{p.creatorName}</option>
-            ))}
-          </select>
-          <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <div className="flex items-center gap-2">
+          {/* Month selector */}
+          <div className="relative">
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                setSelectedCreator(''); // Reset creator when month changes
+              }}
+              className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm"
+            >
+              {availableMonths.map((month) => (
+                <option key={month} value={month}>
+                  {formatMonthDisplay(month)}
+                  {month === currentMonth ? ' (Current)' : ''}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Creator selector */}
+          <div className="relative">
+            <select
+              value={selectedCreator}
+              onChange={(e) => setSelectedCreator(e.target.value)}
+              className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm"
+            >
+              {tierProgressList.map((p) => (
+                <option key={p.creatorName} value={p.creatorName}>{p.creatorName}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
         </div>
       </div>
 
-      <CreatorTierCard progress={currentProgress} tiers={currentTierData.tiers} daysRemaining={daysRemaining} />
+      <CreatorTierCard progress={currentProgress} tiers={currentTierData.tiers} daysRemaining={daysRemaining} isCurrentMonth={isCurrentMonth} />
     </div>
   );
 };
 
-const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; daysRemaining: number }> = ({ progress, tiers, daysRemaining }) => {
+const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; daysRemaining: number; isCurrentMonth: boolean }> = ({ progress, tiers, daysRemaining, isCurrentMonth }) => {
   const { currentRevenue, currentTier, currentBonus, nextTier, gapToNextTier, dailyGmvNeeded, rushAnalysis } = progress;
 
   const sortedTiers = [...tiers].sort((a, b) => a.threshold - b.threshold);
@@ -247,33 +343,53 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
         </div>
       </div>
 
-      {/* Stats - Simplified Overview */}
+      {/* Stats - Overview */}
       <div className="grid grid-cols-3 gap-3 mb-4">
-        {nextTier ? (
+        {isCurrentMonth ? (
+          // Current month: show gap, daily needed, and next tier bonus
+          nextTier ? (
+            <>
+              <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 text-center">
+                <div className="text-xs text-slate-500 mb-1">Gap to {nextTier.name}</div>
+                <div className="text-xl font-bold text-orange-600">${gapToNextTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 text-center">
+                <div className="text-xs text-slate-500 mb-1">Daily Sales Needed</div>
+                <div className="text-xl font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-3 border border-purple-100 text-center">
+                <div className="text-xs text-slate-500 mb-1">Next Tier Bonus</div>
+                <div className="text-xl font-bold text-purple-600">${nextTier.bonus.toLocaleString()}</div>
+                <div className="text-[10px] text-slate-400">Current: ${currentBonus.toLocaleString()}</div>
+              </div>
+            </>
+          ) : (
+            <div className="col-span-3 bg-green-50 rounded-lg p-3 border border-green-200 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+              <span className="text-green-700 font-semibold">Maximum Tier Achieved! Current Bonus: ${currentBonus.toLocaleString()}</span>
+            </div>
+          )
+        ) : (
+          // Historical month: show final results
           <>
-            <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 text-center">
-              <div className="text-xs text-slate-500 mb-1">Gap to {nextTier.name}</div>
-              <div className="text-xl font-bold text-orange-600">${gapToNextTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="bg-green-50 rounded-lg p-3 border border-green-100 text-center">
+              <div className="text-xs text-slate-500 mb-1">Final Tier</div>
+              <div className="text-xl font-bold text-green-600">{currentTier?.name || 'None'}</div>
             </div>
-            <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 text-center">
-              <div className="text-xs text-slate-500 mb-1">Daily Sales Needed</div>
-              <div className="text-xl font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="bg-amber-50 rounded-lg p-3 border border-amber-100 text-center">
+              <div className="text-xs text-slate-500 mb-1">Final Bonus</div>
+              <div className="text-xl font-bold text-amber-600">${currentBonus.toLocaleString()}</div>
             </div>
-            <div className="bg-purple-50 rounded-lg p-3 border border-purple-100 text-center">
-              <div className="text-xs text-slate-500 mb-1">Next Tier Bonus</div>
-              <div className="text-xl font-bold text-purple-600">${nextTier.bonus.toLocaleString()}</div>
-              <div className="text-[10px] text-slate-400">Current: ${currentBonus.toLocaleString()}</div>
+            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-center">
+              <div className="text-xs text-slate-500 mb-1">Final Revenue</div>
+              <div className="text-xl font-bold text-slate-600">${currentRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
             </div>
           </>
-        ) : (
-          <div className="col-span-3 bg-green-50 rounded-lg p-3 border border-green-200 flex items-center justify-center">
-            <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-            <span className="text-green-700 font-semibold">Maximum Tier Achieved! Current Bonus: ${currentBonus.toLocaleString()}</span>
-          </div>
         )}
       </div>
 
-      {rushAnalysis && nextTier && (
+      {/* Rush analysis only shown for current month */}
+      {isCurrentMonth && rushAnalysis && nextTier && (
         <RushAnalysisPanel analysis={rushAnalysis} bonusIncrease={nextTier.bonus - currentBonus} gapToNextTier={gapToNextTier} daysRemaining={daysRemaining} />
       )}
     </div>
