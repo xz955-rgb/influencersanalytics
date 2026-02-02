@@ -934,10 +934,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         />
       </div>
 
-      {/* Tier Rewards Tracker */}
-      {tierData.length > 0 && (
-        <TierRewardsTracker tierData={tierData} adData={data} />
-      )}
+      {/* Tier Rewards Tracker - Always show, component handles empty state */}
+      <TierRewardsTracker tierData={tierData} adData={data} />
 
       {/* Strategy Alerts Section - Compact */}
       {(strategyAlerts.length > 0 || contentInsights.length > 0) && (
