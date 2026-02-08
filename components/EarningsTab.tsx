@@ -98,21 +98,24 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
   // Check if we have Bonus Cal data for the selected month
   const hasBonusCalDataForMonth = filteredBonusCalData.length > 0;
 
-  // This Month, Last Month, This Week, Last Week can show data, but ONLY if we have Bonus Cal for that month
-  const isValidPeriodType = timePreset === 'this_month' || timePreset === 'last_month' || timePreset === 'this_week' || timePreset === 'last_week';
-  const hasValidBonusCalData = isValidPeriodType && hasBonusCalDataForMonth;
-  const hasFullBonusCalData = (timePreset === 'this_month' || timePreset === 'last_month') && hasBonusCalDataForMonth;
+  // For monthly periods (This Month / Last Month), require Bonus Cal data
+  // For other periods (This Week, Last Week, Custom, Quarter), always show using Ad Data only
+  const requiresBonusCal = isMonthlyPeriod;
+  const hasValidData = requiresBonusCal ? hasBonusCalDataForMonth : true;
+  const useBonusCalCommission = isMonthlyPeriod && hasBonusCalDataForMonth;
 
   const earningsSummary: EarningsSummary = useMemo(() => {
-    if (!hasValidBonusCalData) {
+    if (!hasValidData) {
       return {
         totalSpend: 0, totalEarning: 0, totalCommission: 0, totalBonusDiff: 0,
         totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [],
       };
     }
-    // Use filtered Bonus Cal data (only for the selected month)
-    return calculateCreatorSettlements(adData, filteredBonusCalData, startDate, endDate, isMonthlyPeriod);
-  }, [adData, filteredBonusCalData, startDate, endDate, isMonthlyPeriod, hasValidBonusCalData]);
+    // For monthly periods with Bonus Cal data, use Bonus Cal for commission
+    // For other periods, use Ad Data only (pass empty bonusCalData to use ad earning)
+    const bonusDataToUse = useBonusCalCommission ? filteredBonusCalData : [];
+    return calculateCreatorSettlements(adData, bonusDataToUse, startDate, endDate, useBonusCalCommission);
+  }, [adData, filteredBonusCalData, startDate, endDate, useBonusCalCommission, hasValidData]);
 
   const sortedSettlements = useMemo(() => {
     const sorted = [...earningsSummary.creatorSettlements];
@@ -191,40 +194,32 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
           <span className="text-slate-600">Period: <strong className="text-indigo-600">{periodLabel}</strong></span>
           <span className="text-slate-300">|</span>
           <span className="text-slate-500">{Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1} days</span>
-          {hasValidBonusCalData && (
+          {hasValidData && (
             <>
               <span className="text-slate-300">|</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${hasFullBonusCalData ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                Commission: {hasFullBonusCalData ? 'Bonus Cal' : 'Ad Data'}
+              <span className={`text-xs px-2 py-0.5 rounded-full ${useBonusCalCommission ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                Commission: {useBonusCalCommission ? 'Bonus Cal' : 'Ad Data'}
               </span>
             </>
           )}
         </div>
       </div>
 
-      {!hasValidBonusCalData && (
+      {!hasValidData && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-amber-800 mb-2">Bonus Cal Data Not Available</h3>
           <p className="text-sm text-amber-700 max-w-md mx-auto">
-            {isValidPeriodType && !hasBonusCalDataForMonth ? (
-              <>
-                No Bonus Cal data for <strong>{new Date(startDate).toLocaleString('en-US', { month: 'long', year: 'numeric' })}</strong>.
-                <br /><br />
-                Available months: {availableBonusCalMonths.length > 0 
-                  ? availableBonusCalMonths.map(m => {
-                      const [y, mon] = m.split('-');
-                      return new Date(parseInt(y), parseInt(mon) - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
-                    }).join(', ')
-                  : 'None'}
-              </>
-            ) : (
-              <>
-                Bonus Cal data for <strong>{timePreset === 'this_quarter' ? 'This Quarter' : 'this period'}</strong> is not supported.
-                <br /><br />
-                Please select <strong>This Month</strong> or <strong>Last Month</strong>.
-              </>
-            )}
+            No Bonus Cal data for <strong>{new Date(startDate).toLocaleString('en-US', { month: 'long', year: 'numeric' })}</strong>.
+            <br /><br />
+            Monthly views (This Month / Last Month) require Bonus Cal data.
+            <br />
+            Available months: {availableBonusCalMonths.length > 0 
+              ? availableBonusCalMonths.map(m => {
+                  const [y, mon] = m.split('-');
+                  return new Date(parseInt(y), parseInt(mon) - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+                }).join(', ')
+              : 'None'}
           </p>
           {availableBonusCalMonths.length > 0 && (
             <div className="mt-4 flex justify-center gap-2 flex-wrap">
@@ -249,7 +244,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
         </div>
       )}
 
-      {hasValidBonusCalData && (
+      {hasValidData && (
       <div className="grid grid-cols-5 gap-4">
         <div className="p-4 rounded-xl bg-rose-50 border border-rose-200">
           <p className="text-xs font-medium text-rose-600 mb-2">Ad Spend</p>
@@ -283,7 +278,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
       </div>
       )}
 
-      {hasValidBonusCalData && (
+      {hasValidData && (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-slate-50/50"><h3 className="text-sm font-bold text-slate-800">Creator Settlement Details</h3></div>
         <div className="overflow-x-auto">
@@ -338,7 +333,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
       </div>
       )}
 
-      {hasValidBonusCalData && (() => {
+      {hasValidData && useBonusCalCommission && (() => {
         const dataMonth = startDate.toLocaleString('en-US', { month: 'short' });
         const bonusMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1).toLocaleString('en-US', { month: 'short' });
         const commissionMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 2, 1).toLocaleString('en-US', { month: 'short' });
@@ -516,7 +511,7 @@ Tec-do Billing`;
         );
       })()}
 
-      {hasValidBonusCalData && (
+      {hasValidData && (
       <details className="bg-amber-50 rounded-xl border border-amber-200 overflow-hidden group">
         <summary className="p-4 cursor-pointer hover:bg-amber-100/50 flex items-center gap-2 text-sm font-semibold text-amber-800">
           <ChevronRight className="w-4 h-4 transition-transform group-open:rotate-90" /> Click to show calculation logic
