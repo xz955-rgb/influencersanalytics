@@ -519,32 +519,44 @@ export const calculateCreatorSettlements = (
   // Calculate settlement for each creator
   const settlements: CreatorSettlement[] = [];
   
-  bonusCalData.forEach(bonusCal => {
-    const creatorData = creatorDataMap.get(bonusCal.creatorName);
+  // Create a map of bonus cal data by creator name for quick lookup
+  const bonusCalMap = new Map<string, CreatorBonusCalData>();
+  bonusCalData.forEach(bc => bonusCalMap.set(bc.creatorName, bc));
+
+  // Process all creators from ad data
+  creatorDataMap.forEach((data, creatorName) => {
+    const bonusCal = bonusCalMap.get(creatorName);
     
     // Use ad spend from filtered ad data
-    const adSpend = creatorData?.spend || 0;
+    const adSpend = data.spend;
     
     // Commission logic:
     // - Monthly (This Month / Last Month): Use Bonus Cal's Commission-Ads (based on shipped revenue)
     // - Weekly/Other: Use ad data's earning (discounted GMV × creator ratio)
-    const commissionEarning = useMonthlyCommission 
+    const commissionEarning = useMonthlyCommission && bonusCal
       ? bonusCal.commissionAds 
-      : (creatorData?.earning || 0);
+      : data.earning;
     
     // Skip if no commission and no spend
     if (commissionEarning === 0 && adSpend === 0) return;
     
-    // Calculate projected total revenue at month end
-    const projectedGmv = calculateProjectedGmv(adData, bonusCal.creatorName, daysRemaining);
-    const projectedTotalRevenue = bonusCal.totalShippedRevenue + projectedGmv;
+    // Calculate bonus diff - use Bonus Cal data if available
+    let projectedTotalTierBonus = 0;
+    let organicTierBonus = 0;
+    let bonusDiffMonthly = 0;
     
-    // Calculate bonus diff (monthly):
-    // Projected Total Tier Bonus (based on projected month-end revenue) 
-    // MINUS Organic Tier Bonus (based on organic-only revenue)
-    const projectedTotalTierBonus = calculateTierBonus(projectedTotalRevenue, bonusCal.tiers);
-    const organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
-    const bonusDiffMonthly = projectedTotalTierBonus - organicTierBonus;
+    if (bonusCal && bonusCal.tiers.length > 0) {
+      // Calculate projected total revenue at month end
+      const projectedGmv = calculateProjectedGmv(adData, creatorName, daysRemaining);
+      const projectedTotalRevenue = bonusCal.totalShippedRevenue + projectedGmv;
+      
+      // Calculate bonus diff (monthly):
+      // Projected Total Tier Bonus (based on projected month-end revenue) 
+      // MINUS Organic Tier Bonus (based on organic-only revenue)
+      projectedTotalTierBonus = calculateTierBonus(projectedTotalRevenue, bonusCal.tiers);
+      organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
+      bonusDiffMonthly = projectedTotalTierBonus - organicTierBonus;
+    }
     
     // Prorate bonus diff by period ratio (e.g., 7 days / 30 days for a week)
     // For monthly view, use full bonus diff
@@ -563,7 +575,7 @@ export const calculateCreatorSettlements = (
     const marginTecdo = isProfitable ? 0.5 * totalProfit : totalProfit;
     
     settlements.push({
-      creatorName: bonusCal.creatorName,
+      creatorName,
       adSpend,
       commissionEarning,
       profit: totalProfit, // This is now Total Profit
@@ -574,27 +586,6 @@ export const calculateCreatorSettlements = (
       totalTierBonus: projectedTotalTierBonus,
       organicTierBonus,
     });
-  });
-
-  // Also add creators who have ad data but no bonus cal data
-  creatorDataMap.forEach((data, creatorName) => {
-    if (!settlements.find(s => s.creatorName === creatorName)) {
-      const totalEarning = data.earning; // No bonus diff for creators without tier data
-      const totalProfit = totalEarning - data.spend;
-      const isProfitable = totalProfit > 0;
-      settlements.push({
-        creatorName,
-        adSpend: data.spend,
-        commissionEarning: data.earning,
-        profit: totalProfit,
-        bonusDiff: 0,
-        bonusDiffWeekly: 0,
-        marginTecdo: isProfitable ? 0.5 * totalProfit : totalProfit,
-        isProfitable,
-        totalTierBonus: 0,
-        organicTierBonus: 0,
-      });
-    }
   });
 
   // Sort by ad spend descending

@@ -98,8 +98,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
   // Check if we have Bonus Cal data for the selected month
   const hasBonusCalDataForMonth = filteredBonusCalData.length > 0;
 
-  // For monthly periods (This Month / Last Month), require Bonus Cal data
-  // For other periods (This Week, Last Week, Custom, Quarter), always show using Ad Data only
+  // For monthly periods (This Month / Last Month), require Bonus Cal data for commission
+  // For other periods, we can still use Bonus Cal data for prorated bonus diff calculation
   const requiresBonusCal = isMonthlyPeriod;
   const hasValidData = requiresBonusCal ? hasBonusCalDataForMonth : true;
   const useBonusCalCommission = isMonthlyPeriod && hasBonusCalDataForMonth;
@@ -111,10 +111,9 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }
         totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [],
       };
     }
-    // For monthly periods with Bonus Cal data, use Bonus Cal for commission
-    // For other periods, use Ad Data only (pass empty bonusCalData to use ad earning)
-    const bonusDataToUse = useBonusCalCommission ? filteredBonusCalData : [];
-    return calculateCreatorSettlements(adData, bonusDataToUse, startDate, endDate, useBonusCalCommission);
+    // Always pass Bonus Cal data if available (for prorated bonus diff calculation)
+    // The function will use it for commission only if isMonthlyPeriod is true
+    return calculateCreatorSettlements(adData, filteredBonusCalData, startDate, endDate, useBonusCalCommission);
   }, [adData, filteredBonusCalData, startDate, endDate, useBonusCalCommission, hasValidData]);
 
   const sortedSettlements = useMemo(() => {
