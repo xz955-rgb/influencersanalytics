@@ -48,6 +48,47 @@ const parseCurrency = (val: string): number => {
   return isNaN(num) ? 0 : num;
 };
 
+// Normalize theme into standardized categories
+const normalizeTheme = (rawTheme: string): string => {
+  if (!rawTheme || rawTheme.toLowerCase() === 'theme') return 'General';
+  
+  const theme = rawTheme.toLowerCase().trim();
+  
+  // Holiday/Seasonal themes
+  if (theme === 'valentine' || theme === 'valentines') return 'Holiday - Valentine';
+  if (theme === 'xmas' || theme === 'christmas') return 'Holiday - Christmas';
+  if (theme === 'new year' || theme === 'newyear') return 'Holiday - New Year';
+  if (theme === 'black friday' || theme === 'blackfriday') return 'Holiday - Black Friday';
+  if (theme === 'halloween') return 'Holiday - Halloween';
+  if (theme === 'superbowl' || theme === 'super bowl') return 'Holiday - Super Bowl';
+  
+  // Seasonal themes
+  if (theme === 'spring') return 'Seasonal - Spring';
+  if (theme === 'summer') return 'Seasonal - Summer';
+  if (theme === 'fall' || theme === 'autumn') return 'Seasonal - Fall';
+  if (theme === 'winter') return 'Seasonal - Winter';
+  
+  // Home-related themes (group together)
+  if (theme === 'home') return 'Home';
+  if (theme === 'bedroom') return 'Home - Bedroom';
+  if (theme === 'kitchen') return 'Home - Kitchen';
+  if (theme === 'bathroom') return 'Home - Bathroom';
+  
+  // Fashion-related themes (group together)
+  if (theme === 'apparel' || theme === 'clothing') return 'Fashion - Apparel';
+  if (theme === 'fashion') return 'Fashion';
+  if (theme === 'accessories') return 'Fashion - Accessories';
+  if (theme === 'makeup' || theme === 'beauty') return 'Fashion - Beauty';
+  
+  // Other specific themes
+  if (theme === 'pet' || theme === 'pets') return 'Pet';
+  if (theme === 'vacation' || theme === 'travel') return 'Travel';
+  if (theme === 'gift' || theme === 'gifts') return 'Gift';
+  
+  // If no match, return original with proper capitalization
+  return rawTheme.charAt(0).toUpperCase() + rawTheme.slice(1);
+};
+
 export const fetchData = async (): Promise<AdData[]> => {
   try {
     const response = await fetch(CSV_URL);
@@ -96,13 +137,17 @@ export const fetchData = async (): Promise<AdData[]> => {
         }
       }
       
+      // Parse and normalize theme into categories
+      const rawTheme = idx.theme !== -1 ? (vals[idx.theme] || '').trim() : '';
+      const normalizedTheme = normalizeTheme(rawTheme);
+      
       return {
         date: new Date(vals[idx.date]),
         creatorName: idx.creator !== -1 ? vals[idx.creator] : 'Unknown',
         contentName: idx.content !== -1 ? vals[idx.content] : (idx.creator !== -1 ? `${vals[idx.creator]} Post` : 'Untitled'),
         platform: idx.platform !== -1 ? vals[idx.platform] : 'Other',
         category: idx.category !== -1 ? vals[idx.category] : 'Uncategorized',
-        theme: idx.theme !== -1 ? vals[idx.theme] : 'General',
+        theme: normalizedTheme,
         spend: idx.spend !== -1 ? parseCurrency(vals[idx.spend]) : 0,
         gmv: idx.gmv !== -1 ? parseCurrency(vals[idx.gmv]) : 0,
         earning: idx.earning !== -1 ? parseCurrency(vals[idx.earning]) : 0,
