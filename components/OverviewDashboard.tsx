@@ -321,17 +321,34 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
       day.count += 1;
     });
 
-    return Array.from(groupedByDate.entries())
-      .map(([date, values]) => ({
-        timestamp: date,
-        dateStr: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        spend: values.spend,
-        earning: values.earning,
-        profit: values.earning - values.spend,
-        roi: values.spend > 0 ? values.earning / values.spend : 0,
-        count: values.count
-      }))
+    // First pass: calculate daily metrics
+    const dailyData = Array.from(groupedByDate.entries())
+      .map(([date, values]) => {
+        const profit = values.earning - values.spend;
+        // Margin: if profit > 0, Tecdo gets 50%; if profit < 0, Tecdo absorbs all loss
+        const margin = profit > 0 ? profit * 0.5 : profit;
+        return {
+          timestamp: date,
+          dateStr: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+          spend: values.spend,
+          earning: values.earning,
+          profit,
+          margin,
+          roi: values.spend > 0 ? values.earning / values.spend : 0,
+          count: values.count,
+          cumulativeMargin: 0 // Will be calculated in second pass
+        };
+      })
       .sort((a, b) => a.timestamp - b.timestamp);
+
+    // Second pass: calculate cumulative margin
+    let runningMargin = 0;
+    dailyData.forEach(day => {
+      runningMargin += day.margin;
+      day.cumulativeMargin = runningMargin;
+    });
+
+    return dailyData;
   }, [data, compDimension, targetEntities]);
 
   const handlePieClick = (entry: any) => {
@@ -1183,7 +1200,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         <div className="flex-1 min-h-0 relative">
             <ResponsiveContainer width="100%" height="100%">
                 {breakdownView === 'multi-metric' ? (
-                    <ComposedChart data={multiMetricData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                    <ComposedChart data={multiMetricData} margin={{ top: 10, right: 60, left: 10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis 
                             dataKey="timestamp" 
@@ -1197,21 +1214,22 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                             yAxisId="left"
                             fontSize={12} 
                             stroke="#94a3b8"
-                            label={{ value: 'Amount ($)', angle: -90, position: 'insideLeft', fontSize: 10 }}
+                            label={{ value: 'Daily ($)', angle: -90, position: 'insideLeft', fontSize: 10 }}
                         />
                         <YAxis 
                             yAxisId="right"
                             orientation="right"
                             fontSize={12} 
                             stroke="#94a3b8"
-                            label={{ value: 'ROI (x)', angle: 90, position: 'insideRight', fontSize: 10 }}
+                            label={{ value: 'Cumulative ($)', angle: 90, position: 'insideRight', fontSize: 10 }}
                         />
                         <Tooltip content={<CustomTooltipTrend />} />
-                        <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
-                        <ReferenceLine yAxisId="right" y={1} stroke="#ef4444" strokeDasharray="3 3" />
-                        <Bar yAxisId="left" dataKey="spend" fill="#6366f1" name="Spend" opacity={0.7} />
-                        <Bar yAxisId="left" dataKey="profit" fill="#10b981" name="Profit" opacity={0.7} />
-                        <Line yAxisId="right" type="monotone" dataKey="roi" stroke="#ec4899" strokeWidth={2} name="ROI" dot={{ r: 3 }} />
+                        <Legend wrapperStyle={{fontSize: '11px', paddingTop: '10px'}} />
+                        <ReferenceLine yAxisId="left" y={0} stroke="#94a3b8" strokeDasharray="2 2" />
+                        <Bar yAxisId="left" dataKey="spend" fill="#6366f1" name="Daily Spend" opacity={0.6} />
+                        <Bar yAxisId="left" dataKey="profit" fill="#10b981" name="Daily Profit" opacity={0.6} />
+                        <Bar yAxisId="left" dataKey="margin" fill="#f59e0b" name="Daily Margin" opacity={0.8} />
+                        <Line yAxisId="right" type="monotone" dataKey="cumulativeMargin" stroke="#ec4899" strokeWidth={2.5} name="Cumulative Margin" dot={{ r: 3 }} />
                     </ComposedChart>
                 ) : breakdownView === 'trend' ? (
                     compMetric === 'roi' ? (
