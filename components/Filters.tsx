@@ -59,19 +59,45 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
     </div>
   );
 
-  // Themes Section with Grouping
+  // Themes Section with Hierarchical Grouping (format: "Category/Subcategory")
   const ThemesSection: React.FC<{ themes: string[], filters: FilterState, setFilters: React.Dispatch<React.SetStateAction<FilterState>> }> = ({ themes, filters, setFilters }) => {
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     
-    // Group themes - updated groupings
-    const holidayThemes = ['New Year', 'Valentine', 'Xmas']; // Removed Winter
-    const seasonThemes = ['Winter', 'Spring']; // Season category
-    const homeThemes = ['Kitchen', 'Bedroom', 'Bathroom']; // Removed Home (use All instead)
-    const beautyThemes = ['Beauty']; // New Beauty category
-    
-    // Filter out grouped themes and Apparel from Other
-    const excludedFromOther = [...holidayThemes, ...seasonThemes, ...homeThemes, ...beautyThemes, 'Home', 'Apparel'];
-    const otherThemes = themes.filter(t => !excludedFromOther.includes(t));
+    // Parse themes into hierarchical structure
+    const themeGroups = React.useMemo(() => {
+      const groups: Record<string, string[]> = {};
+      
+      themes.forEach(theme => {
+        if (theme.includes('/')) {
+          const [category, subcategory] = theme.split('/');
+          if (!groups[category]) groups[category] = [];
+          groups[category].push(theme);
+        } else {
+          // Legacy themes without category go to Other
+          if (!groups['Other']) groups['Other'] = [];
+          groups['Other'].push(theme);
+        }
+      });
+      
+      // Sort categories: Holiday, Seasonal, Home, Fashion first, then Other last
+      const categoryOrder = ['Holiday', 'Seasonal', 'Home', 'Fashion', 'Other'];
+      const sortedGroups: Record<string, string[]> = {};
+      
+      categoryOrder.forEach(cat => {
+        if (groups[cat]) {
+          sortedGroups[cat] = groups[cat].sort();
+        }
+      });
+      
+      // Add any remaining categories
+      Object.keys(groups).forEach(cat => {
+        if (!sortedGroups[cat]) {
+          sortedGroups[cat] = groups[cat].sort();
+        }
+      });
+      
+      return sortedGroups;
+    }, [themes]);
     
     const toggleGroup = (group: string) => {
       setExpandedGroups(prev => {
@@ -91,111 +117,100 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
 
     // Select all themes in a group
     const handleSelectAllInGroup = (groupThemes: string[]) => {
-      const availableThemes = groupThemes.filter(t => themes.includes(t));
-      const allSelected = availableThemes.every(t => (filters.themes as string[]).includes(t));
+      const allSelected = groupThemes.every(t => (filters.themes as string[]).includes(t));
       
       if (allSelected) {
         // Deselect all
         setFilters(prev => ({
           ...prev,
-          themes: (prev.themes as string[]).filter(t => !availableThemes.includes(t))
+          themes: (prev.themes as string[]).filter(t => !groupThemes.includes(t))
         }));
       } else {
         // Select all
         setFilters(prev => ({
           ...prev,
-          themes: [...new Set([...(prev.themes as string[]), ...availableThemes])]
+          themes: [...new Set([...(prev.themes as string[]), ...groupThemes])]
         }));
       }
     };
     
-    const GroupItem = ({ groupName, groupThemes }: { groupName: string, groupThemes: string[] }) => {
-      const isExpanded = expandedGroups.has(groupName);
-      const availableThemes = groupThemes.filter(t => themes.includes(t));
-      const hasSelected = availableThemes.some(t => (filters.themes as string[]).includes(t));
-      const allSelected = availableThemes.length > 0 && availableThemes.every(t => (filters.themes as string[]).includes(t));
-      
-      if (availableThemes.length === 0) return null;
-      
-      return (
-        <div className="mb-2">
-          <button
-            onClick={() => toggleGroup(groupName)}
-            className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-md border transition-all ${
-              hasSelected 
-                ? 'bg-indigo-50 border-indigo-300 text-indigo-700' 
-                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <span className="font-medium">{groupName}</span>
-            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </button>
-          {isExpanded && (
-            <div className="mt-1.5 ml-2 flex flex-wrap gap-1.5">
-              {/* All option */}
-              <button
-                onClick={() => handleSelectAllInGroup(groupThemes)}
-                className={`px-2 py-1 text-[10px] rounded-full border transition-all ${
-                  allSelected 
-                    ? 'bg-indigo-600 text-white border-indigo-600' 
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-                }`}
-              >
-                All
-              </button>
-              {availableThemes.map(theme => {
-                const isSelected = (filters.themes as string[]).includes(theme);
-                return (
-                  <button
-                    key={theme}
-                    onClick={() => handleThemeSelect(theme)}
-                    className={`px-2 py-1 text-[10px] rounded-full border transition-all ${
-                      isSelected 
-                        ? 'bg-indigo-600 text-white border-indigo-600' 
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-                    }`}
-                  >
-                    {theme}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      );
+    // Get display name (subcategory only) from full theme path
+    const getDisplayName = (theme: string) => {
+      if (theme.includes('/')) {
+        return theme.split('/')[1];
+      }
+      return theme;
+    };
+    
+    // Count selected in group
+    const getSelectedCount = (groupThemes: string[]) => {
+      return groupThemes.filter(t => (filters.themes as string[]).includes(t)).length;
     };
     
     return (
       <div className="mb-6">
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Themes</h4>
         <div className="space-y-1">
-          <GroupItem groupName="Holiday" groupThemes={holidayThemes} />
-          <GroupItem groupName="Season" groupThemes={seasonThemes} />
-          <GroupItem groupName="Home" groupThemes={homeThemes} />
-          <GroupItem groupName="Beauty" groupThemes={beautyThemes} />
-          {otherThemes.length > 0 && (
-            <div className="mt-2">
-              <div className="text-[10px] font-medium text-slate-500 mb-1.5">Other</div>
-              <div className="flex flex-wrap gap-1.5">
-                {otherThemes.map(theme => {
-                  const isSelected = (filters.themes as string[]).includes(theme);
-                  return (
+          {Object.entries(themeGroups).map(([groupName, groupThemes]) => {
+            const isExpanded = expandedGroups.has(groupName);
+            const selectedCount = getSelectedCount(groupThemes);
+            const hasSelected = selectedCount > 0;
+            const allSelected = selectedCount === groupThemes.length;
+            
+            return (
+              <div key={groupName} className="mb-1">
+                <button
+                  onClick={() => toggleGroup(groupName)}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-md border transition-all ${
+                    hasSelected 
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700' 
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{groupName}</span>
+                    {hasSelected && (
+                      <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">
+                        {selectedCount}/{groupThemes.length}
+                      </span>
+                    )}
+                  </div>
+                  {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+                {isExpanded && (
+                  <div className="mt-1.5 ml-2 flex flex-wrap gap-1.5">
+                    {/* All option */}
                     <button
-                      key={theme}
-                      onClick={() => handleThemeSelect(theme)}
+                      onClick={() => handleSelectAllInGroup(groupThemes)}
                       className={`px-2 py-1 text-[10px] rounded-full border transition-all ${
-                        isSelected 
+                        allSelected 
                           ? 'bg-indigo-600 text-white border-indigo-600' 
                           : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
                       }`}
                     >
-                      {theme}
+                      All
                     </button>
-                  );
-                })}
+                    {groupThemes.map(theme => {
+                      const isSelected = (filters.themes as string[]).includes(theme);
+                      return (
+                        <button
+                          key={theme}
+                          onClick={() => handleThemeSelect(theme)}
+                          className={`px-2 py-1 text-[10px] rounded-full border transition-all ${
+                            isSelected 
+                              ? 'bg-indigo-600 text-white border-indigo-600' 
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                          }`}
+                        >
+                          {getDisplayName(theme)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })}
         </div>
       </div>
     );
