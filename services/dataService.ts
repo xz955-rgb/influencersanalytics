@@ -48,45 +48,59 @@ const parseCurrency = (val: string): number => {
   return isNaN(num) ? 0 : num;
 };
 
-// Normalize theme into standardized categories
+// Theme category mapping: { normalizedName: [possible raw values] }
+const THEME_CATEGORIES: Record<string, Record<string, string[]>> = {
+  'Holiday': {
+    'Valentine': ['valentine', 'valentines', "valentine's"],
+    'Christmas': ['xmas', 'christmas'],
+    'New Year': ['new year', 'newyear'],
+    'Black Friday': ['black friday', 'blackfriday'],
+    'Halloween': ['halloween'],
+    'Super Bowl': ['superbowl', 'super bowl'],
+  },
+  'Seasonal': {
+    'Spring': ['spring'],
+    'Summer': ['summer'],
+    'Fall': ['fall', 'autumn'],
+    'Winter': ['winter'],
+  },
+  'Home': {
+    'General': ['home'],
+    'Bedroom': ['bedroom'],
+    'Kitchen': ['kitchen'],
+    'Bathroom': ['bathroom'],
+  },
+  'Fashion': {
+    'Apparel': ['apparel', 'clothing'],
+    'General': ['fashion'],
+    'Accessories': ['accessories'],
+    'Beauty': ['makeup', 'beauty'],
+  },
+  'Other': {
+    'Pet': ['pet', 'pets'],
+    'Travel': ['vacation', 'travel'],
+    'Gift': ['gift', 'gifts'],
+    'General': [], // Fallback for empty or unknown themes
+  },
+};
+
+// Normalize theme into standardized categories (format: "Category/Subcategory")
 const normalizeTheme = (rawTheme: string): string => {
-  if (!rawTheme || rawTheme.toLowerCase() === 'theme') return 'General';
+  if (!rawTheme || rawTheme.toLowerCase() === 'theme') return 'Other/General';
   
   const theme = rawTheme.toLowerCase().trim();
   
-  // Holiday/Seasonal themes
-  if (theme === 'valentine' || theme === 'valentines') return 'Holiday - Valentine';
-  if (theme === 'xmas' || theme === 'christmas') return 'Holiday - Christmas';
-  if (theme === 'new year' || theme === 'newyear') return 'Holiday - New Year';
-  if (theme === 'black friday' || theme === 'blackfriday') return 'Holiday - Black Friday';
-  if (theme === 'halloween') return 'Holiday - Halloween';
-  if (theme === 'superbowl' || theme === 'super bowl') return 'Holiday - Super Bowl';
+  // Search through all categories and subcategories
+  for (const [category, subcategories] of Object.entries(THEME_CATEGORIES)) {
+    for (const [subcategory, keywords] of Object.entries(subcategories)) {
+      if (keywords.includes(theme)) {
+        return `${category}/${subcategory}`;
+      }
+    }
+  }
   
-  // Seasonal themes
-  if (theme === 'spring') return 'Seasonal - Spring';
-  if (theme === 'summer') return 'Seasonal - Summer';
-  if (theme === 'fall' || theme === 'autumn') return 'Seasonal - Fall';
-  if (theme === 'winter') return 'Seasonal - Winter';
-  
-  // Home-related themes (group together)
-  if (theme === 'home') return 'Home';
-  if (theme === 'bedroom') return 'Home - Bedroom';
-  if (theme === 'kitchen') return 'Home - Kitchen';
-  if (theme === 'bathroom') return 'Home - Bathroom';
-  
-  // Fashion-related themes (group together)
-  if (theme === 'apparel' || theme === 'clothing') return 'Fashion - Apparel';
-  if (theme === 'fashion') return 'Fashion';
-  if (theme === 'accessories') return 'Fashion - Accessories';
-  if (theme === 'makeup' || theme === 'beauty') return 'Fashion - Beauty';
-  
-  // Other specific themes
-  if (theme === 'pet' || theme === 'pets') return 'Pet';
-  if (theme === 'vacation' || theme === 'travel') return 'Travel';
-  if (theme === 'gift' || theme === 'gifts') return 'Gift';
-  
-  // If no match, return original with proper capitalization
-  return rawTheme.charAt(0).toUpperCase() + rawTheme.slice(1);
+  // If no match found, put in Other with the original name capitalized
+  return `Other/${rawTheme.charAt(0).toUpperCase() + rawTheme.slice(1)}`;
 };
 
 export const fetchData = async (): Promise<AdData[]> => {
