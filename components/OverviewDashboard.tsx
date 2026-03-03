@@ -210,7 +210,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   // 3. Breakdown Analysis (Charts)
   // ----------------------------------------------------------------------
   const [breakdownView, setBreakdownView] = useState<'trend' | 'distribution' | 'multi-metric'>('trend');
-  const [multiMetricRange, setMultiMetricRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('this_month');
+  const [multiMetricRange, setMultiMetricRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('all');
   const [multiMetricView, setMultiMetricView] = useState<'all' | 'commission' | 'bonus'>('all');
   const [compDimension, setCompDimension] = useState<'creatorName' | 'category' | 'theme'>('category');
   const [compMetric, setCompMetric] = useState<'spend' | 'roi' | 'earning' | 'profit'>('roi');
