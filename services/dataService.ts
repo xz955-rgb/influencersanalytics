@@ -553,6 +553,13 @@ export const calculateCreatorSettlements = (
   // Filter ad data by date range
   const filteredData = adData.filter(d => {
     const date = new Date(d.date);
+    if (isMonthlyPeriod) {
+      // Month-based matching is more stable than timestamp ranges for monthly views.
+      return (
+        date.getFullYear() === startDate.getFullYear() &&
+        date.getMonth() === startDate.getMonth()
+      );
+    }
     return date >= rangeStart && date <= rangeEnd;
   });
 
