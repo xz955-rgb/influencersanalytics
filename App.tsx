@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { fetchData, fetchBonusCalData, fetchPostLinks, fetchCreatorBonusCalData, fetchMonthlyEarningCalData, PostLinks } from './services/dataService';
-import { AdData, FilterState, CreatorTierData, CreatorBonusCalData, CreatorMonthlyEarning } from './types';
+import { fetchData, fetchBonusCalData, fetchPostLinks, fetchCreatorBonusCalData, PostLinks } from './services/dataService';
+import { AdData, FilterState, CreatorTierData, CreatorBonusCalData } from './types';
 import { Filters } from './components/Filters';
 import { OverviewDashboard } from './components/OverviewDashboard';
 import { LifecyclePerformance } from './components/LifecyclePerformance';
@@ -11,7 +11,6 @@ const App: React.FC = () => {
   const [data, setData] = useState<AdData[]>([]);
   const [tierData, setTierData] = useState<CreatorTierData[]>([]);
   const [bonusCalData, setBonusCalData] = useState<CreatorBonusCalData[]>([]);
-  const [monthlyEarningData, setMonthlyEarningData] = useState<CreatorMonthlyEarning[]>([]);
   const [postLinks, setPostLinks] = useState<Map<string, PostLinks>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,13 +29,12 @@ const App: React.FC = () => {
 
   // Load Data
   useEffect(() => {
-    Promise.all([fetchData(), fetchBonusCalData(), fetchPostLinks(), fetchCreatorBonusCalData(), fetchMonthlyEarningCalData()])
-      .then(([adData, tierBonusData, linksData, creatorBonusData, monthlyData]) => {
+    Promise.all([fetchData(), fetchBonusCalData(), fetchPostLinks(), fetchCreatorBonusCalData()])
+      .then(([adData, tierBonusData, linksData, creatorBonusData]) => {
         setData(adData);
         setTierData(tierBonusData);
         setPostLinks(linksData);
         setBonusCalData(creatorBonusData);
-        setMonthlyEarningData(monthlyData);
         // Initialize Date Filters
         if (adData.length > 0) {
             const minDate = new Date(Math.min(...adData.map(i => i.date.getTime())));
@@ -169,9 +167,9 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} postLinks={postLinks} monthlyEarningData={monthlyEarningData} />}
+                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} postLinks={postLinks} />}
                 {activeTab === 'lifecycle' && <LifecyclePerformance data={filteredData} />}
-                {activeTab === 'earnings' && <EarningsTab adData={data} bonusCalData={bonusCalData} monthlyEarningData={monthlyEarningData} />}
+                {activeTab === 'earnings' && <EarningsTab adData={data} bonusCalData={bonusCalData} />}
             </div>
         </main>
       </div>

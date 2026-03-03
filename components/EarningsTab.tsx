@@ -1,16 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { 
   DollarSign, TrendingUp, TrendingDown, Calendar, 
-  ChevronDown, ArrowUpDown, AlertCircle, ChevronRight, CheckCircle 
+  ChevronDown, ArrowUpDown, AlertCircle, ChevronRight 
 } from 'lucide-react';
-import { AdData, CreatorBonusCalData, CreatorSettlement, EarningsSummary, TimeRangePreset, CreatorMonthlyEarning } from '../types';
+import { AdData, CreatorBonusCalData, CreatorSettlement, EarningsSummary, TimeRangePreset } from '../types';
 import { calculateCreatorSettlements } from '../services/dataService';
 import { KpiCard } from './KpiCard';
 
 interface EarningsTabProps {
   adData: AdData[];
   bonusCalData: CreatorBonusCalData[];
-  monthlyEarningData: CreatorMonthlyEarning[];
 }
 
 // Get date range for preset - aligned with Filters component
@@ -57,7 +56,7 @@ const formatDateInput = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, monthlyEarningData }) => {
+export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData }) => {
   const [timePreset, setTimePreset] = useState<TimeRangePreset>('this_month');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -96,29 +95,26 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
     return bonusCalData.filter(d => d.dataMonth === selectedMonth);
   }, [bonusCalData, selectedMonth]);
 
-  // Check if we have actual Monthly Earning Cal data for the selected month
-  const hasActualMonthlyData = useMemo(() => {
-    return monthlyEarningData.some(d => d.monthlyData.has(selectedMonth));
-  }, [monthlyEarningData, selectedMonth]);
-
   // Check if we have Bonus Cal data for the selected month
   const hasBonusCalDataForMonth = filteredBonusCalData.length > 0;
 
-  // For monthly periods, we need either actual data OR Bonus Cal data
-  const hasValidData = isMonthlyPeriod 
-    ? (hasActualMonthlyData || hasBonusCalDataForMonth) 
-    : true; // Weekly/other periods always have valid data from ad data
+  // For monthly periods (This Month / Last Month), require Bonus Cal data for commission
+  // For other periods, we can still use Bonus Cal data for prorated bonus diff calculation
+  const requiresBonusCal = isMonthlyPeriod;
+  const hasValidData = requiresBonusCal ? hasBonusCalDataForMonth : true;
+  const useBonusCalCommission = isMonthlyPeriod && hasBonusCalDataForMonth;
 
   const earningsSummary: EarningsSummary = useMemo(() => {
     if (!hasValidData) {
       return {
-        totalSpend: 0, totalCommission: 0, totalBonus: 0, totalBonusDiff: 0,
-        totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [], isActualData: false,
+        totalSpend: 0, totalEarning: 0, totalCommission: 0, totalBonusDiff: 0,
+        totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [],
       };
     }
-    // Pass all data sources; the function decides whether to use actual or estimated data
-    return calculateCreatorSettlements(adData, filteredBonusCalData, monthlyEarningData, startDate, endDate, isMonthlyPeriod);
-  }, [adData, filteredBonusCalData, monthlyEarningData, startDate, endDate, isMonthlyPeriod, hasValidData]);
+    // Always pass Bonus Cal data if available (for prorated bonus diff calculation)
+    // The function will use it for commission only if isMonthlyPeriod is true
+    return calculateCreatorSettlements(adData, filteredBonusCalData, startDate, endDate, useBonusCalCommission);
+  }, [adData, filteredBonusCalData, startDate, endDate, useBonusCalCommission, hasValidData]);
 
   const sortedSettlements = useMemo(() => {
     const sorted = [...earningsSummary.creatorSettlements];
@@ -200,9 +196,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
           {hasValidData && (
             <>
               <span className="text-slate-300">|</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${earningsSummary.isActualData ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                {earningsSummary.isActualData ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                {earningsSummary.isActualData ? 'Actual Data' : 'Estimated'}
+              <span className={`text-xs px-2 py-0.5 rounded-full ${useBonusCalCommission ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                Commission: {useBonusCalCommission ? 'Bonus Cal' : 'Ad Data'}
               </span>
             </>
           )}
@@ -256,10 +251,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
         </div>
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
           <p className="text-xs font-medium text-emerald-600 mb-2">Total Earning</p>
-          <p className="text-2xl font-bold text-emerald-700">{formatFullCurrency(earningsSummary.totalCommission + earningsSummary.totalBonus)}</p>
+          <p className="text-2xl font-bold text-emerald-700">{formatFullCurrency(earningsSummary.totalCommission + earningsSummary.totalBonusDiff)}</p>
           <div className="mt-2 pt-2 border-t border-emerald-200 space-y-1">
             <div className="flex justify-between text-xs"><span className="text-slate-500">Commission</span><span className="font-medium text-blue-600">{formatFullCurrency(earningsSummary.totalCommission)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-slate-500">Bonus{earningsSummary.isActualData ? '' : ' (Est.)'}</span><span className="font-medium text-amber-600">{formatFullCurrency(earningsSummary.totalBonus)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-slate-500">Bonus Diff</span><span className="font-medium text-amber-600">{formatFullCurrency(earningsSummary.totalBonusDiff)}</span></div>
           </div>
         </div>
         <div className={`p-4 rounded-xl ${earningsSummary.totalProfit >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
@@ -268,15 +263,15 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
           <p className="text-xs text-slate-500 mt-2">Earning - Spend</p>
         </div>
         <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200">
-          <p className="text-xs font-medium text-indigo-600 mb-2">Margin (AdMee)</p>
+          <p className="text-xs font-medium text-indigo-600 mb-2">Margin (Tecdo)</p>
           <p className={`text-2xl font-bold ${earningsSummary.totalMarginTecdo >= 0 ? 'text-indigo-700' : 'text-red-600'}`}>{formatFullCurrency(earningsSummary.totalMarginTecdo)}</p>
-          <p className="text-xs text-slate-500 mt-2">{earningsSummary.totalProfit >= 0 ? 'margin share × profit' : 'absorbs all loss'}</p>
+          <p className="text-xs text-slate-500 mt-2">{earningsSummary.totalProfit >= 0 ? '50% of profit' : 'absorbs all loss'}</p>
         </div>
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
           <p className="text-xs font-medium text-slate-600 mb-2">Summary</p>
           <div className="space-y-2">
             <div className="flex justify-between text-sm"><span className="text-slate-500">Profitable</span><span className="font-bold text-green-600">{earningsSummary.creatorSettlements.filter(s => s.isProfitable).length}/{earningsSummary.creatorSettlements.length}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">Data</span><span className={`font-bold ${earningsSummary.isActualData ? 'text-green-600' : 'text-amber-600'}`}>{earningsSummary.isActualData ? 'Actual' : 'Estimated'}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-500">Period</span><span className="font-bold text-slate-700">{Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1} days</span></div>
           </div>
         </div>
       </div>
@@ -284,48 +279,35 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
 
       {hasValidData && (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            Creator Settlement Details
-            {earningsSummary.isActualData && <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Actual Data</span>}
-          </h3>
-        </div>
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50"><h3 className="text-sm font-bold text-slate-800">Creator Settlement Details</h3></div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Creator</th>
-                <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Share</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('adSpend')}><div className="flex items-center justify-end gap-1">Ad Spend <ArrowUpDown className="w-3 h-3" /></div></th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('commissionEarning')}><div className="flex items-center justify-end gap-1">Commission <ArrowUpDown className="w-3 h-3" /></div></th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('bonus')}><div className="flex items-center justify-end gap-1">Bonus <ArrowUpDown className="w-3 h-3" /></div></th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('bonusDiffWeekly')}><div className="flex items-center justify-end gap-1">Bonus Diff <ArrowUpDown className="w-3 h-3" /></div></th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Earning</th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('profit')}><div className="flex items-center justify-end gap-1">Profit <ArrowUpDown className="w-3 h-3" /></div></th>
+                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('profit')}><div className="flex items-center justify-end gap-1">Total Profit <ArrowUpDown className="w-3 h-3" /></div></th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('marginTecdo')}><div className="flex items-center justify-end gap-1">Margin <ArrowUpDown className="w-3 h-3" /></div></th>
                 <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-100">
               {sortedSettlements.map((settlement) => {
-                const totalEarning = settlement.commissionEarning + settlement.bonus;
+                const totalEarning = settlement.commissionEarning + settlement.bonusDiffWeekly;
                 return (
                 <tr key={settlement.creatorName} className="hover:bg-slate-50 transition-colors">
                   <td className="px-3 py-3 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full ${settlement.isProfitable ? 'bg-green-500' : 'bg-red-500'}`} />
                       <span className="text-sm font-medium text-slate-900">{settlement.creatorName}</span>
-                      {settlement.isActualData && <CheckCircle className="w-3 h-3 text-green-500" title="Actual data" />}
                     </div>
                   </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-center text-xs font-medium text-purple-600">{(settlement.marginShare * 100).toFixed(0)}%</td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-700">{formatFullCurrency(settlement.adSpend)}</td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-blue-600">{formatFullCurrency(settlement.commissionEarning)}</td>
-                  <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">
-                    {formatFullCurrency(settlement.bonus)}
-                    {!settlement.isActualData && settlement.totalTierBonus > 0 && (
-                      <div className="text-[9px] text-slate-400">{formatCurrency(settlement.totalTierBonus)} - {formatCurrency(settlement.organicTierBonus)}</div>
-                    )}
-                  </td>
+                  <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600" title={`Projected: ${formatFullCurrency(settlement.totalTierBonus)} - Organic: ${formatFullCurrency(settlement.organicTierBonus)}`}>{formatFullCurrency(settlement.bonusDiffWeekly)}<div className="text-[9px] text-slate-400">{formatCurrency(settlement.totalTierBonus)} - {formatCurrency(settlement.organicTierBonus)}</div></td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-emerald-600 font-semibold">{formatFullCurrency(totalEarning)}</td>
                   <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold ${settlement.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatFullCurrency(settlement.profit)}</td>
                   <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold ${settlement.marginTecdo >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>{formatFullCurrency(settlement.marginTecdo)}</td>
@@ -336,11 +318,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
               );})}
               <tr className="bg-slate-100 font-bold">
                 <td className="px-3 py-3 whitespace-nowrap text-sm text-slate-900">Total ({sortedSettlements.length} creators)</td>
-                <td className="px-3 py-3 whitespace-nowrap text-center text-xs text-slate-500">-</td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-900">{formatFullCurrency(earningsSummary.totalSpend)}</td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-blue-600">{formatFullCurrency(earningsSummary.totalCommission)}</td>
-                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">{formatFullCurrency(earningsSummary.totalBonus)}</td>
-                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-emerald-600">{formatFullCurrency(earningsSummary.totalCommission + earningsSummary.totalBonus)}</td>
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">{formatFullCurrency(earningsSummary.totalBonusDiff)}</td>
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-emerald-600">{formatFullCurrency(earningsSummary.totalCommission + earningsSummary.totalBonusDiff)}</td>
                 <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono ${earningsSummary.totalProfit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatFullCurrency(earningsSummary.totalProfit)}</td>
                 <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono ${earningsSummary.totalMarginTecdo >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>{formatFullCurrency(earningsSummary.totalMarginTecdo)}</td>
                 <td className="px-3 py-3 whitespace-nowrap text-center">-</td>
@@ -351,14 +332,14 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
       </div>
       )}
 
-      {hasValidData && isMonthlyPeriod && (() => {
+      {hasValidData && useBonusCalCommission && (() => {
         const dataMonth = startDate.toLocaleString('en-US', { month: 'short' });
         const bonusMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1).toLocaleString('en-US', { month: 'short' });
         const commissionMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 2, 1).toLocaleString('en-US', { month: 'short' });
         return (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-indigo-50">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><DollarSign className="w-4 h-4 text-purple-600" /> Creator Payments to AdMee</h3>
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><DollarSign className="w-4 h-4 text-purple-600" /> Creator Payments to Tecdo</h3>
           <p className="text-xs text-slate-500 mt-1"><strong>{dataMonth}</strong> data → Flat Fee Rewards in <strong>{bonusMonth}</strong> (M+1) | Commission in <strong>{commissionMonth}</strong> (M+2)</p>
         </div>
         <div className="overflow-x-auto">
