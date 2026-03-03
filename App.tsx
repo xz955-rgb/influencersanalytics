@@ -175,7 +175,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} postLinks={postLinks} />}
+                {activeTab === 'overview' && <OverviewDashboard data={filteredData} tierData={tierData} postLinks={postLinks} bonusCalData={bonusCalData} monthlyEarningData={monthlyEarningData} />}
                 {activeTab === 'lifecycle' && <LifecyclePerformance data={filteredData} />}
                 {activeTab === 'earnings' && <EarningsTab adData={data} bonusCalData={bonusCalData} monthlyEarningData={monthlyEarningData} />}
             </div>

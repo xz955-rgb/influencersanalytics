@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { AdData, CreatorTierData } from '../types';
+import { AdData, CreatorTierData, CreatorBonusCalData, MonthlyEarningRow } from '../types';
 import { KpiCard } from './KpiCard';
 import { TierRewardsTracker } from './TierRewardsTracker';
 import { 
@@ -16,10 +16,14 @@ import {
 } from 'lucide-react';
 import { PostLinks } from '../services/dataService';
 
+import { calculateTierBonus } from '../services/dataService';
+
 interface OverviewProps {
   data: AdData[];
   tierData: CreatorTierData[];
   postLinks: Map<string, PostLinks>;
+  bonusCalData: CreatorBonusCalData[];
+  monthlyEarningData: MonthlyEarningRow[];
 }
 
 // 1. Consistent Color Palette
@@ -68,7 +72,7 @@ const formatDuration = (ms: number) => {
     return `${days} days`;
 };
 
-export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, postLinks }) => {
+export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, postLinks, bonusCalData, monthlyEarningData }) => {
   // ----------------------------------------------------------------------
   // 1. KPI Calculations & Global Stats
   // ----------------------------------------------------------------------
@@ -206,6 +210,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   // 3. Breakdown Analysis (Charts)
   // ----------------------------------------------------------------------
   const [breakdownView, setBreakdownView] = useState<'trend' | 'distribution' | 'multi-metric'>('trend');
+  const [multiMetricRange, setMultiMetricRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('this_month');
+  const [multiMetricView, setMultiMetricView] = useState<'all' | 'commission' | 'bonus'>('all');
   const [compDimension, setCompDimension] = useState<'creatorName' | 'category' | 'theme'>('category');
   const [compMetric, setCompMetric] = useState<'spend' | 'roi' | 'earning' | 'profit'>('roi');
   const [focusEntity, setFocusEntity] = useState<string>(''); 
@@ -302,46 +308,154 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     return { data: result, keys: targetEntities };
   }, [data, compDimension, compMetric, targetEntities]);
 
-  // Multi-metric aggregated data (all metrics combined)
-  const multiMetricData = useMemo(() => {
-    const groupedByDate = new Map<number, { spend: number, earning: number, count: number }>();
-
-    data.forEach(d => {
-      const entityName = d[compDimension] || 'Unknown';
-      if (!targetEntities.includes(entityName)) return;
-
-      const dateKey = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate()).getTime();
-      if (!groupedByDate.has(dateKey)) {
-        groupedByDate.set(dateKey, { spend: 0, earning: 0, count: 0 });
+  // Multi-metric: date range helper
+  const multiMetricDateRange = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    switch (multiMetricRange) {
+      case 'this_month': {
+        return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: today };
       }
-      
-      const day = groupedByDate.get(dateKey)!;
-      day.spend += d.spend;
-      day.earning += d.earning;
-      day.count += 1;
+      case 'last_month': {
+        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const last = new Date(today.getFullYear(), today.getMonth(), 0);
+        return { start: first, end: last };
+      }
+      case 'this_quarter': {
+        const q = Math.floor(today.getMonth() / 3);
+        return { start: new Date(today.getFullYear(), q * 3, 1), end: today };
+      }
+      default:
+        return { start: null, end: null }; // all time
+    }
+  }, [multiMetricRange]);
+
+  // Multi-metric aggregated data with bonus, margin share
+  const multiMetricData = useMemo(() => {
+    const { start: rangeStart, end: rangeEnd } = multiMetricDateRange;
+
+    // Filter ad data by multi-metric time range
+    const filtered = data.filter(d => {
+      if (!rangeStart || !rangeEnd) return true;
+      const date = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate());
+      return date >= rangeStart && date <= rangeEnd;
     });
 
-    // First pass: calculate daily metrics
-    const dailyData = Array.from(groupedByDate.entries())
-      .map(([date, values]) => {
-        const profit = values.earning - values.spend;
-        // Margin: if profit > 0, Tecdo gets 50%; if profit < 0, Tecdo absorbs all loss
-        const margin = profit > 0 ? profit * 0.5 : profit;
+    // Aggregate ad data by date → { spend, earning per creator }
+    const dateCreatorMap = new Map<number, Map<string, { spend: number; earning: number }>>();
+    filtered.forEach(d => {
+      const dateKey = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate()).getTime();
+      if (!dateCreatorMap.has(dateKey)) dateCreatorMap.set(dateKey, new Map());
+      const cm = dateCreatorMap.get(dateKey)!;
+      const prev = cm.get(d.creatorName) || { spend: 0, earning: 0 };
+      cm.set(d.creatorName, { spend: prev.spend + d.spend, earning: prev.earning + d.earning });
+    });
+
+    // Build marginShare lookup (latest across all months)
+    const marginShareMap = new Map<string, number>();
+    monthlyEarningData.forEach(d => {
+      if (d.marginShare > 0) marginShareMap.set(d.creatorName, d.marginShare);
+    });
+
+    // Build monthly bonus lookup per creator: month → creator → bonus
+    const monthlyBonusMap = new Map<string, Map<string, number>>(); // "YYYY-MM" → creator → bonus
+    monthlyEarningData.forEach(d => {
+      if (!monthlyBonusMap.has(d.month)) monthlyBonusMap.set(d.month, new Map());
+      monthlyBonusMap.get(d.month)!.set(d.creatorName, d.bonus);
+    });
+
+    // Build bonus cal lookup for current-month estimation: creator → bonusDiff
+    const bonusCalCurrentMonth = new Map<string, number>();
+    const nowDate = new Date();
+    const currentMonthStr = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonthBonusCal = bonusCalData.filter(bc => bc.dataMonth === currentMonthStr);
+    currentMonthBonusCal.forEach(bc => {
+      if (bc.tiers.length > 0) {
+        const totalBonus = calculateTierBonus(bc.totalShippedRevenue, bc.tiers);
+        const organicBonus = calculateTierBonus(bc.shippedRevOrganic, bc.tiers);
+        bonusCalCurrentMonth.set(bc.creatorName, totalBonus - organicBonus);
+      }
+    });
+
+    // Get all unique months present in date data
+    const monthsInRange = new Set<string>();
+    dateCreatorMap.forEach((_, dateKey) => {
+      const d = new Date(dateKey);
+      monthsInRange.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    });
+
+    // Pre-compute daily prorated bonus per creator per month
+    const dailyBonusPerMonth = new Map<string, Map<string, number>>(); // month → creator → dailyBonus
+    monthsInRange.forEach(month => {
+      const [y, m] = month.split('-').map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const creatorDailyBonus = new Map<string, number>();
+
+      const actualMonthBonuses = monthlyBonusMap.get(month);
+      if (actualMonthBonuses) {
+        // Actual data from Monthly Earning Cal
+        actualMonthBonuses.forEach((bonus, creator) => {
+          creatorDailyBonus.set(creator, bonus / daysInMonth);
+        });
+      } else if (month === currentMonthStr) {
+        // Estimated from Bonus Cal for current month
+        bonusCalCurrentMonth.forEach((bonusDiff, creator) => {
+          creatorDailyBonus.set(creator, bonusDiff / daysInMonth);
+        });
+      }
+      dailyBonusPerMonth.set(month, creatorDailyBonus);
+    });
+
+    // Build daily data points
+    const dailyData = Array.from(dateCreatorMap.entries())
+      .map(([dateKey, creatorMap]) => {
+        const d = new Date(dateKey);
+        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const dailyBonusLookup = dailyBonusPerMonth.get(month) || new Map();
+
+        let totalSpend = 0;
+        let totalCommission = 0;
+        let totalBonus = 0;
+        let weightedMarginShareNum = 0;
+        let weightedMarginShareDen = 0;
+
+        creatorMap.forEach(({ spend, earning }, creator) => {
+          totalSpend += spend;
+          totalCommission += earning;
+          totalBonus += dailyBonusLookup.get(creator) || 0;
+          const ms = marginShareMap.get(creator) ?? 0.5;
+          const creatorEarning = earning + (dailyBonusLookup.get(creator) || 0);
+          weightedMarginShareNum += ms * creatorEarning;
+          weightedMarginShareDen += creatorEarning;
+        });
+
+        // Add bonus for creators in bonus data but not in ad data for this day
+        dailyBonusLookup.forEach((db, creator) => {
+          if (!creatorMap.has(creator)) totalBonus += db;
+        });
+
+        const avgMarginShare = weightedMarginShareDen > 0 ? weightedMarginShareNum / weightedMarginShareDen : 0.5;
+
+        const earning = multiMetricView === 'commission' ? totalCommission
+                      : multiMetricView === 'bonus' ? totalBonus
+                      : totalCommission + totalBonus;
+        const profit = earning - totalSpend;
+        const margin = profit > 0 ? avgMarginShare * profit : profit;
+
         return {
-          timestamp: date,
-          dateStr: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-          spend: values.spend,
-          earning: values.earning,
+          timestamp: dateKey,
+          dateStr: new Date(dateKey).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+          spend: totalSpend,
+          commission: totalCommission,
+          bonus: totalBonus,
+          earning,
           profit,
           margin,
-          roi: values.spend > 0 ? values.earning / values.spend : 0,
-          count: values.count,
-          cumulativeMargin: 0 // Will be calculated in second pass
+          cumulativeMargin: 0,
         };
       })
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    // Second pass: calculate cumulative margin
     let runningMargin = 0;
     dailyData.forEach(day => {
       runningMargin += day.margin;
@@ -349,7 +463,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     });
 
     return dailyData;
-  }, [data, compDimension, targetEntities]);
+  }, [data, multiMetricDateRange, multiMetricView, monthlyEarningData, bonusCalData]);
 
   const handlePieClick = (entry: any) => {
     if (entry && entry.name) {
@@ -1162,6 +1276,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                     </button>
                 </div>
 
+                {breakdownView !== 'multi-metric' && (
+                <>
                 <select value={compDimension} onChange={(e) => setCompDimension(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="category">Category</option>
                     <option value="creatorName">Creator</option>
@@ -1186,8 +1302,24 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         <ChevronDown className="absolute right-2 top-2 w-3 h-3 text-slate-400 pointer-events-none" />
                     )}
                 </div>
+                </>
+                )}
 
-                {breakdownView !== 'multi-metric' && (
+                {breakdownView === 'multi-metric' ? (
+                    <>
+                        <select value={multiMetricRange} onChange={(e) => setMultiMetricRange(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="this_quarter">This Quarter</option>
+                            <option value="all">All Time</option>
+                        </select>
+                        <select value={multiMetricView} onChange={(e) => setMultiMetricView(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="all">Commission + Bonus</option>
+                            <option value="commission">Commission Only</option>
+                            <option value="bonus">Bonus Only</option>
+                        </select>
+                    </>
+                ) : (
                     <select value={compMetric} onChange={(e) => setCompMetric(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="roi">ROI</option>
                         <option value="spend">Spend</option>
@@ -1214,22 +1346,41 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                             yAxisId="left"
                             fontSize={12} 
                             stroke="#94a3b8"
-                            label={{ value: 'Daily ($)', angle: -90, position: 'insideLeft', fontSize: 10 }}
+                            tickFormatter={(v: number) => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v.toFixed(0)}`}
                         />
                         <YAxis 
                             yAxisId="right"
                             orientation="right"
                             fontSize={12} 
                             stroke="#94a3b8"
-                            label={{ value: 'Cumulative ($)', angle: 90, position: 'insideRight', fontSize: 10 }}
+                            tickFormatter={(v: number) => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v.toFixed(0)}`}
                         />
-                        <Tooltip content={<CustomTooltipTrend />} />
+                        <Tooltip
+                            content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null;
+                                const d = payload[0]?.payload;
+                                if (!d) return null;
+                                return (
+                                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
+                                        <p className="font-semibold text-slate-800 mb-2">{d.dateStr}</p>
+                                        {multiMetricView !== 'bonus' && <p className="text-rose-600">Spend: ${d.spend.toLocaleString(undefined, {maximumFractionDigits:0})}</p>}
+                                        {multiMetricView !== 'bonus' && <p className="text-blue-600">Commission: ${d.commission.toLocaleString(undefined, {maximumFractionDigits:0})}</p>}
+                                        {multiMetricView !== 'commission' && <p className="text-amber-600">Bonus: ${d.bonus.toLocaleString(undefined, {maximumFractionDigits:0})}</p>}
+                                        <hr className="my-1 border-slate-100" />
+                                        <p className={`font-semibold ${d.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>Profit: ${d.profit.toLocaleString(undefined, {maximumFractionDigits:0})}</p>
+                                        <p className={`font-semibold ${d.margin >= 0 ? 'text-purple-600' : 'text-red-500'}`}>Margin: ${d.margin.toLocaleString(undefined, {maximumFractionDigits:0})}</p>
+                                        <p className="text-pink-600">Cumulative: ${d.cumulativeMargin.toLocaleString(undefined, {maximumFractionDigits:0})}</p>
+                                    </div>
+                                );
+                            }}
+                        />
                         <Legend wrapperStyle={{fontSize: '11px', paddingTop: '10px'}} />
                         <ReferenceLine yAxisId="left" y={0} stroke="#94a3b8" strokeDasharray="2 2" />
-                        <Bar yAxisId="left" dataKey="spend" fill="#6366f1" name="Daily Spend" opacity={0.6} />
-                        <Bar yAxisId="left" dataKey="profit" fill="#10b981" name="Daily Profit" opacity={0.6} />
-                        <Bar yAxisId="left" dataKey="margin" fill="#f59e0b" name="Daily Margin" opacity={0.8} />
-                        <Line yAxisId="right" type="monotone" dataKey="cumulativeMargin" stroke="#ec4899" strokeWidth={2.5} name="Cumulative Margin" dot={{ r: 3 }} />
+                        {multiMetricView !== 'bonus' && <Bar yAxisId="left" dataKey="spend" fill="#f43f5e" name="Spend" opacity={0.5} />}
+                        {multiMetricView !== 'bonus' && <Bar yAxisId="left" dataKey="commission" fill="#3b82f6" name="Commission" opacity={0.6} />}
+                        {multiMetricView !== 'commission' && <Bar yAxisId="left" dataKey="bonus" fill="#f59e0b" name="Bonus" opacity={0.7} />}
+                        <Bar yAxisId="left" dataKey="margin" fill="#8b5cf6" name="Daily Margin" opacity={0.8} />
+                        <Line yAxisId="right" type="monotone" dataKey="cumulativeMargin" stroke="#ec4899" strokeWidth={2.5} name="Cumulative Margin" dot={{ r: 2 }} />
                     </ComposedChart>
                 ) : breakdownView === 'trend' ? (
                     compMetric === 'roi' ? (
