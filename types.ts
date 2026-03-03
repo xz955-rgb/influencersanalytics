@@ -103,12 +103,14 @@ export interface CreatorSettlement {
   adSpend: number;                // Total ad spend for period
   commissionEarning: number;      // Total commission earning for period
   profit: number;                 // Commission - Spend
-  bonusDiff: number;              // Total tier bonus - Organic tier bonus
-  bonusDiffWeekly: number;        // Estimated weekly bonus diff
-  marginTecdo: number;            // 50% × (Profit + Bonus Diff) if profit > 0, else 50% × Bonus Diff
+  bonusDiff: number;              // Total tier bonus - Organic tier bonus (or actual bonus for past months)
+  bonusDiffWeekly: number;        // Period-adjusted bonus (same as bonusDiff for monthly, prorated for weekly)
+  marginTecdo: number;            // marginShare × profit if profit > 0, else absorbs all loss
   isProfitable: boolean;          // profit > 0
   totalTierBonus: number;         // Bonus based on total shipped revenue
   organicTierBonus: number;       // Bonus based on organic shipped revenue
+  marginShare: number;            // e.g. 0.35 for 35% — from Monthly Earning Cal, or default 0.5
+  isActualData: boolean;          // true if Commission/Bonus came from Monthly Earning Cal
 }
 
 // Overall earnings summary
@@ -119,6 +121,16 @@ export interface EarningsSummary {
   totalBonusDiff: number;
   totalMarginTecdo: number;
   creatorSettlements: CreatorSettlement[];
+}
+
+// Actual monthly earning row from Monthly Earning Cal sheet
+export interface MonthlyEarningRow {
+  creatorName: string;
+  marginShare: number;          // e.g. 0.35 for 35%
+  month: string;                // "YYYY-MM"
+  commission: number;
+  bonus: number;
+  adSpend: number;              // from the sheet (informational only; we use Ads Data for spend)
 }
 
 // Time range preset

@@ -1,9 +1,12 @@
-import { AdData, AdDataRaw, CreatorTierData, TierLevel, CreatorBonusCalData, CreatorSettlement, EarningsSummary } from '../types';
+import { AdData, AdDataRaw, CreatorTierData, TierLevel, CreatorBonusCalData, CreatorSettlement, EarningsSummary, MonthlyEarningRow } from '../types';
 
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RXtp9vUyu-UnIazbcW-CAy-Y91COaMD-u--oeekb2D/pub?output=csv';
 
 // Bonus Cal CSV URL - using export format with gid for the specific tab
 const BONUS_CAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1134944905';
+
+// Monthly Earning Cal CSV URL - actual historical commission and bonus data
+const MONTHLY_EARNING_CAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1636678788';
 
 // Posts tab CSV URL for post links (columns E=post URL, F=amazon URL)
 const POSTS_TAB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1203420941';
@@ -472,6 +475,79 @@ export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]>
   }
 };
 
+// Fetch Monthly Earning Cal data — actual commission and bonus for past months
+export const fetchMonthlyEarningCalData = async (): Promise<MonthlyEarningRow[]> => {
+  try {
+    const response = await fetch(MONTHLY_EARNING_CAL_CSV_URL);
+    if (!response.ok) {
+      console.warn('Could not fetch monthly earning cal data');
+      return [];
+    }
+    const text = await response.text();
+    const lines = text.split('\n').filter(line => line.trim() !== '');
+    if (lines.length < 2) return [];
+
+    const headers = parseCSVLine(lines[0]);
+
+    const monthNameToNum: Record<string, string> = {
+      'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+      'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+    };
+
+    // Detect month columns: "Jan-Commission", "Jan-Bonus", "Feb-Commission", etc.
+    const monthCols: { month: string; commIdx: number; bonusIdx: number }[] = [];
+    const colMap = new Map<string, { commIdx: number; bonusIdx: number }>();
+
+    headers.forEach((h, i) => {
+      const lower = h.toLowerCase().trim();
+      const match = lower.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[-\s]*(commission|bonus)/);
+      if (!match) return;
+      const monthNum = monthNameToNum[match[1]];
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const mInt = parseInt(monthNum);
+      const year = mInt > currentMonth ? now.getFullYear() - 1 : now.getFullYear();
+      const key = `${year}-${monthNum}`;
+
+      if (!colMap.has(key)) colMap.set(key, { commIdx: -1, bonusIdx: -1 });
+      const entry = colMap.get(key)!;
+      if (match[2] === 'commission') entry.commIdx = i;
+      else if (match[2] === 'bonus') entry.bonusIdx = i;
+    });
+
+    colMap.forEach((v, k) => {
+      if (v.commIdx !== -1 || v.bonusIdx !== -1) monthCols.push({ month: k, ...v });
+    });
+
+    // Margin Share is in column B (index 1)
+    const marginShareIdx = 1;
+    const rows: MonthlyEarningRow[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const vals = parseCSVLine(lines[i]);
+      const creatorName = vals[0]?.trim();
+      if (!creatorName) continue;
+
+      const marginRaw = vals[marginShareIdx]?.replace('%', '').trim();
+      const marginShare = marginRaw ? parseFloat(marginRaw) / 100 : 0;
+      if (isNaN(marginShare) || marginShare <= 0) continue;
+
+      for (const mc of monthCols) {
+        const commission = mc.commIdx !== -1 ? parseCurrency(vals[mc.commIdx]) : 0;
+        const bonus = mc.bonusIdx !== -1 ? parseCurrency(vals[mc.bonusIdx]) : 0;
+        // Skip rows where both are 0 or "/" (parseCurrency returns 0 for "/")
+        if (commission === 0 && bonus === 0) continue;
+        rows.push({ creatorName, marginShare, month: mc.month, commission, bonus, adSpend: 0 });
+      }
+    }
+
+    return rows;
+  } catch (error) {
+    console.warn('Error fetching monthly earning cal data:', error);
+    return [];
+  }
+};
+
 // Calculate the tier bonus for a given revenue amount
 export const calculateTierBonus = (revenue: number, tiers: TierLevel[]): number => {
   if (!tiers || tiers.length === 0) return 0;
@@ -530,31 +606,27 @@ const calculateProjectedGmv = (
 };
 
 // Calculate earnings settlement for each creator
-// Commission: 
-//   - Monthly (starts on 1st): Use Bonus Cal's Commission-Ads (real shipped revenue based)
-//   - Weekly/Other: Use ad data's earning column (discounted GMV × creator ratio)
-// Bonus Diff = Projected Total Tier Bonus - Organic Tier Bonus (prorated by period)
-// Total Earning = Commission + Bonus Diff (prorated)
-// Total Profit = Total Earning - Ad Spend
-// Margin: If Total Profit > 0: 50% × Total Profit; If < 0: Tecdo absorbs all loss
+// For past months with Monthly Earning Cal data: Commission & Bonus from actual data, Ad Spend from Ads Data
+// For current/latest month: Commission from Bonus Cal (monthly) or Ad Data (weekly), Bonus estimated from tier diff
+// Margin: marginShare × profit if profit > 0, else absorbs all loss
 export const calculateCreatorSettlements = (
   adData: AdData[],
   bonusCalData: CreatorBonusCalData[],
   startDate: Date,
   endDate: Date,
-  isMonthlyPeriod: boolean = false // Pass true for "This Month" or "Last Month"
+  isMonthlyPeriod: boolean = false,
+  monthlyEarningData: MonthlyEarningRow[] = []
 ): EarningsSummary => {
-  // Normalize to full-day boundaries to avoid dropping same-day rows with time parts.
+  // Normalize to full-day boundaries
   const rangeStart = new Date(startDate);
   rangeStart.setHours(0, 0, 0, 0);
   const rangeEnd = new Date(endDate);
   rangeEnd.setHours(23, 59, 59, 999);
 
-  // Filter ad data by date range
+  // Filter ad data by date range — ad spend always comes from here
   const filteredData = adData.filter(d => {
     const date = new Date(d.date);
     if (isMonthlyPeriod) {
-      // Month-based matching is more stable than timestamp ranges for monthly views.
       return (
         date.getFullYear() === startDate.getFullYear() &&
         date.getMonth() === startDate.getMonth()
@@ -564,109 +636,113 @@ export const calculateCreatorSettlements = (
   });
 
   // Aggregate spend and earning by creator (from ad data)
-  const creatorDataMap = new Map<string, { spend: number; earning: number }>();
-  
+  const creatorAdMap = new Map<string, { spend: number; earning: number }>();
   filteredData.forEach(item => {
-    const existing = creatorDataMap.get(item.creatorName) || { spend: 0, earning: 0 };
-    creatorDataMap.set(item.creatorName, {
+    const existing = creatorAdMap.get(item.creatorName) || { spend: 0, earning: 0 };
+    creatorAdMap.set(item.creatorName, {
       spend: existing.spend + item.spend,
       earning: existing.earning + item.earning,
     });
   });
 
-  // Calculate period days and ratio for prorating bonus diff
+  // Check for actual monthly earning data for this period
+  const periodMonth = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+  const actualMonthData = monthlyEarningData.filter(d => d.month === periodMonth);
+  const hasActualMonthData = isMonthlyPeriod && actualMonthData.length > 0;
+
+  // Build lookup maps
+  const actualDataMap = new Map<string, MonthlyEarningRow>();
+  actualMonthData.forEach(d => actualDataMap.set(d.creatorName, d));
+
+  // Collect latest marginShare per creator across all months
+  const marginShareMap = new Map<string, number>();
+  monthlyEarningData.forEach(d => {
+    if (d.marginShare > 0) marginShareMap.set(d.creatorName, d.marginShare);
+  });
+
   const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const daysInMonth = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
   const periodRatio = periodDays / daysInMonth;
-  
-  // Use Bonus Cal commission for monthly periods (This Month / Last Month)
-  // Otherwise use ad data's earning for weekly/other periods
-  const useMonthlyCommission = isMonthlyPeriod;
 
-  // Calculate days remaining in month for projections
+  const bonusCalMap = new Map<string, CreatorBonusCalData>();
+  bonusCalData.forEach(bc => bonusCalMap.set(bc.creatorName, bc));
+
   const now = new Date();
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const daysRemaining = Math.max(1, Math.ceil((endOfMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 
-  // Calculate settlement for each creator
   const settlements: CreatorSettlement[] = [];
-  
-  // Create a map of bonus cal data by creator name for quick lookup
-  const bonusCalMap = new Map<string, CreatorBonusCalData>();
-  bonusCalData.forEach(bc => bonusCalMap.set(bc.creatorName, bc));
 
-  // Process all creators from ad data
-  creatorDataMap.forEach((data, creatorName) => {
+  // Collect all creator names from both ad data and actual monthly data
+  const allCreators = new Set<string>();
+  creatorAdMap.forEach((_, name) => allCreators.add(name));
+  if (hasActualMonthData) {
+    actualMonthData.forEach(d => allCreators.add(d.creatorName));
+  }
+
+  allCreators.forEach(creatorName => {
+    const adInfo = creatorAdMap.get(creatorName) || { spend: 0, earning: 0 };
     const bonusCal = bonusCalMap.get(creatorName);
-    
-    // Use ad spend from filtered ad data
-    const adSpend = data.spend;
-    
-    // Commission logic:
-    // - Monthly (This Month / Last Month): Use Bonus Cal's Commission-Ads (based on shipped revenue)
-    // - Weekly/Other: Use ad data's earning (discounted GMV × creator ratio)
-    const commissionEarning = useMonthlyCommission && bonusCal
-      ? bonusCal.commissionAds 
-      : data.earning;
-    
-    // Skip if no commission and no spend
-    if (commissionEarning === 0 && adSpend === 0) return;
-    
-    // Calculate bonus diff - use Bonus Cal data if available
+    const actualRow = hasActualMonthData ? actualDataMap.get(creatorName) : undefined;
+    const mShare = marginShareMap.get(creatorName) ?? 0.5;
+
+    const adSpend = adInfo.spend;
+    let commissionEarning: number;
+    let bonusAmount: number;
+    let isActual = false;
     let projectedTotalTierBonus = 0;
     let organicTierBonus = 0;
-    let bonusDiffMonthly = 0;
-    
-    if (bonusCal && bonusCal.tiers.length > 0) {
-      // Calculate projected total revenue at month end
-      const projectedGmv = calculateProjectedGmv(adData, creatorName, daysRemaining);
-      const projectedTotalRevenue = bonusCal.totalShippedRevenue + projectedGmv;
-      
-      // Calculate bonus diff (monthly):
-      // Projected Total Tier Bonus (based on projected month-end revenue) 
-      // MINUS Organic Tier Bonus (based on organic-only revenue)
-      projectedTotalTierBonus = calculateTierBonus(projectedTotalRevenue, bonusCal.tiers);
-      organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
-      bonusDiffMonthly = projectedTotalTierBonus - organicTierBonus;
+
+    if (actualRow) {
+      // ---- ACTUAL DATA path: past month with Monthly Earning Cal data ----
+      commissionEarning = actualRow.commission;
+      bonusAmount = actualRow.bonus;
+      isActual = true;
+    } else {
+      // ---- ESTIMATED path: current month or no actual data ----
+      commissionEarning = isMonthlyPeriod && bonusCal
+        ? bonusCal.commissionAds
+        : adInfo.earning;
+
+      let bonusDiffMonthly = 0;
+      if (bonusCal && bonusCal.tiers.length > 0) {
+        const projectedGmv = calculateProjectedGmv(adData, creatorName, daysRemaining);
+        const projectedTotalRevenue = bonusCal.totalShippedRevenue + projectedGmv;
+        projectedTotalTierBonus = calculateTierBonus(projectedTotalRevenue, bonusCal.tiers);
+        organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
+        bonusDiffMonthly = projectedTotalTierBonus - organicTierBonus;
+      }
+      bonusAmount = isMonthlyPeriod ? bonusDiffMonthly : bonusDiffMonthly * periodRatio;
     }
-    
-    // Prorate bonus diff by period ratio (e.g., 7 days / 30 days for a week)
-    // For monthly view, use full bonus diff
-    const bonusDiffProrated = useMonthlyCommission ? bonusDiffMonthly : bonusDiffMonthly * periodRatio;
-    
-    // Total Earning = Commission + Bonus Diff (prorated)
-    const totalEarning = commissionEarning + bonusDiffProrated;
-    
-    // Total Profit = Total Earning - Ad Spend
+
+    if (commissionEarning === 0 && bonusAmount === 0 && adSpend === 0) return;
+
+    const totalEarning = commissionEarning + bonusAmount;
     const totalProfit = totalEarning - adSpend;
-    
-    // Calculate margin:
-    // If Total Profit > 0: Margin = 50% × Total Profit
-    // If Total Profit < 0: Margin = Total Profit (Tecdo absorbs all loss)
     const isProfitable = totalProfit > 0;
-    const marginTecdo = isProfitable ? 0.5 * totalProfit : totalProfit;
-    
+    const marginTecdo = isProfitable ? mShare * totalProfit : totalProfit;
+
     settlements.push({
       creatorName,
       adSpend,
       commissionEarning,
-      profit: totalProfit, // This is now Total Profit
-      bonusDiff: bonusDiffMonthly,
-      bonusDiffWeekly: bonusDiffProrated, // Prorated bonus diff for the period
+      profit: totalProfit,
+      bonusDiff: bonusAmount,
+      bonusDiffWeekly: bonusAmount,
       marginTecdo,
       isProfitable,
       totalTierBonus: projectedTotalTierBonus,
       organicTierBonus,
+      marginShare: mShare,
+      isActualData: isActual,
     });
   });
 
-  // Sort by ad spend descending
   settlements.sort((a, b) => b.adSpend - a.adSpend);
 
-  // Calculate totals
   const totalSpend = settlements.reduce((sum, s) => sum + s.adSpend, 0);
   const totalCommission = settlements.reduce((sum, s) => sum + s.commissionEarning, 0);
-  const totalBonusDiffProrated = settlements.reduce((sum, s) => sum + s.bonusDiffWeekly, 0);
+  const totalBonusDiff = settlements.reduce((sum, s) => sum + s.bonusDiffWeekly, 0);
   const totalProfit = settlements.reduce((sum, s) => sum + s.profit, 0);
   const totalMarginTecdo = settlements.reduce((sum, s) => sum + s.marginTecdo, 0);
 
@@ -674,7 +750,7 @@ export const calculateCreatorSettlements = (
     totalSpend,
     totalCommission,
     totalProfit,
-    totalBonusDiff: totalBonusDiffProrated,
+    totalBonusDiff,
     totalMarginTecdo,
     creatorSettlements: settlements,
   };
