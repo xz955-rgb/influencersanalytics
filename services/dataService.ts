@@ -731,20 +731,20 @@ export const calculateCreatorSettlements = (
     const allCreators = new Set([...creatorAdDataMap.keys(), ...monthlyEarningMap.keys()]);
     
     allCreators.forEach(creatorName => {
-      const creatorAdInfo = creatorAdDataMap.get(creatorName);
+      const adData = creatorAdDataMap.get(creatorName);
       const bonusCal = bonusCalMap.get(creatorName);
       const monthlyEarning = monthlyEarningMap.get(creatorName);
       
       // Skip if no ad data for this creator in the period
-      if (!creatorAdInfo || (creatorAdInfo.spend === 0 && creatorAdInfo.earning === 0)) return;
+      if (!adData || (adData.spend === 0 && adData.earning === 0)) return;
       
-      const adSpend = creatorAdInfo.spend;
+      const adSpend = adData.spend;
       const marginShare = monthlyEarning?.marginShare ?? 0.5; // Default 50% if not found
       
       // Commission: Use Bonus Cal for monthly, or ad data earning for weekly
       const commissionEarning = isMonthlyPeriod && bonusCal
         ? bonusCal.commissionAds 
-        : creatorAdInfo.earning;
+        : adData.earning;
       
       // Calculate bonus diff from Bonus Cal
       let projectedTotalTierBonus = 0;
