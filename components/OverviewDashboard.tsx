@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { AdData, CreatorTierData } from '../types';
+import { AdData, CreatorTierData, CreatorMonthlyEarning } from '../types';
 import { KpiCard } from './KpiCard';
 import { TierRewardsTracker } from './TierRewardsTracker';
 import { 
@@ -20,6 +20,7 @@ interface OverviewProps {
   data: AdData[];
   tierData: CreatorTierData[];
   postLinks: Map<string, PostLinks>;
+  monthlyEarningData?: CreatorMonthlyEarning[];
 }
 
 // 1. Consistent Color Palette
@@ -68,7 +69,7 @@ const formatDuration = (ms: number) => {
     return `${days} days`;
 };
 
-export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, postLinks }) => {
+export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, postLinks, monthlyEarningData = [] }) => {
   // ----------------------------------------------------------------------
   // 1. KPI Calculations & Global Stats
   // ----------------------------------------------------------------------
@@ -210,7 +211,11 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   const [compMetric, setCompMetric] = useState<'spend' | 'roi' | 'earning' | 'profit'>('roi');
   const [focusEntity, setFocusEntity] = useState<string>(''); 
   const [topN, setTopN] = useState<number>(5);
-  const [selectedPost, setSelectedPost] = useState<string | null>(null); 
+  const [selectedPost, setSelectedPost] = useState<string | null>(null);
+  
+  // Multi-Metric Analysis filters
+  const [multiMetricView, setMultiMetricView] = useState<'all' | 'commission' | 'bonus'>('all');
+  const [multiMetricDateRange, setMultiMetricDateRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('all'); 
 
   useEffect(() => {
     setFocusEntity('');
@@ -302,11 +307,44 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     return { data: result, keys: targetEntities };
   }, [data, compDimension, compMetric, targetEntities]);
 
-  // Multi-metric aggregated data (all metrics combined)
+  // Multi-metric aggregated data (all metrics combined with bonus)
   const multiMetricData = useMemo(() => {
+    // Apply date range filter for multi-metric view
+    let filteredAdData = data;
+    const now = new Date();
+    
+    if (multiMetricDateRange !== 'all') {
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      let rangeStart: Date, rangeEnd: Date;
+      
+      switch (multiMetricDateRange) {
+        case 'this_month':
+          rangeStart = new Date(today.getFullYear(), today.getMonth(), 1);
+          rangeEnd = today;
+          break;
+        case 'last_month':
+          rangeStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+          rangeEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+          break;
+        case 'this_quarter':
+          const quarter = Math.floor(today.getMonth() / 3);
+          rangeStart = new Date(today.getFullYear(), quarter * 3, 1);
+          rangeEnd = today;
+          break;
+        default:
+          rangeStart = new Date(0);
+          rangeEnd = today;
+      }
+      
+      filteredAdData = data.filter(d => {
+        const date = new Date(d.date);
+        return date >= rangeStart && date <= rangeEnd;
+      });
+    }
+
     const groupedByDate = new Map<number, { spend: number, earning: number, count: number }>();
 
-    data.forEach(d => {
+    filteredAdData.forEach(d => {
       const entityName = d[compDimension] || 'Unknown';
       if (!targetEntities.includes(entityName)) return;
 
@@ -321,35 +359,86 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
       day.count += 1;
     });
 
+    // Calculate monthly bonus distributed to daily (prorated)
+    // Aggregate bonus by month from monthlyEarningData
+    const monthlyBonusMap = new Map<string, number>(); // "YYYY-MM" -> total bonus
+    const monthlyMarginShareMap = new Map<string, number>(); // "YYYY-MM" -> avg margin share
+    
+    monthlyEarningData.forEach(creator => {
+      creator.monthlyData.forEach((monthData, monthKey) => {
+        const currentBonus = monthlyBonusMap.get(monthKey) || 0;
+        monthlyBonusMap.set(monthKey, currentBonus + monthData.bonus);
+        // Store margin share (we'll use average if multiple creators)
+        if (!monthlyMarginShareMap.has(monthKey)) {
+          monthlyMarginShareMap.set(monthKey, creator.marginShare);
+        }
+      });
+    });
+
     // First pass: calculate daily metrics
     const dailyData = Array.from(groupedByDate.entries())
       .map(([date, values]) => {
-        const profit = values.earning - values.spend;
-        // Margin: if profit > 0, Tecdo gets 50%; if profit < 0, Tecdo absorbs all loss
-        const margin = profit > 0 ? profit * 0.5 : profit;
+        const dateObj = new Date(date);
+        const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+        const daysInMonth = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0).getDate();
+        
+        // Get prorated daily bonus from monthly data
+        const monthlyBonus = monthlyBonusMap.get(monthKey) || 0;
+        const dailyBonus = monthlyBonus / daysInMonth;
+        
+        // Get margin share (default to 35% if not found)
+        const marginShare = monthlyMarginShareMap.get(monthKey) || 0.35;
+        
+        // Based on view filter, calculate different metrics
+        let commission = values.earning;
+        let bonus = dailyBonus;
+        
+        // Total earning based on view
+        let totalEarning: number;
+        if (multiMetricView === 'commission') {
+          totalEarning = commission;
+          bonus = 0;
+        } else if (multiMetricView === 'bonus') {
+          totalEarning = bonus;
+          commission = 0;
+        } else {
+          totalEarning = commission + bonus;
+        }
+        
+        const profit = totalEarning - values.spend;
+        // Margin: marginShare × profit if profit > 0, else absorb all loss
+        const margin = profit > 0 ? profit * marginShare : profit;
+        
         return {
           timestamp: date,
           dateStr: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
           spend: values.spend,
-          earning: values.earning,
+          commission,
+          bonus,
+          earning: totalEarning,
           profit,
           margin,
-          roi: values.spend > 0 ? values.earning / values.spend : 0,
+          marginShare,
+          roi: values.spend > 0 ? totalEarning / values.spend : 0,
           count: values.count,
-          cumulativeMargin: 0 // Will be calculated in second pass
+          cumulativeMargin: 0,
+          cumulativeProfit: 0,
         };
       })
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    // Second pass: calculate cumulative margin
+    // Second pass: calculate cumulative values
     let runningMargin = 0;
+    let runningProfit = 0;
     dailyData.forEach(day => {
       runningMargin += day.margin;
+      runningProfit += day.profit;
       day.cumulativeMargin = runningMargin;
+      day.cumulativeProfit = runningProfit;
     });
 
     return dailyData;
-  }, [data, compDimension, targetEntities]);
+  }, [data, compDimension, targetEntities, monthlyEarningData, multiMetricView, multiMetricDateRange]);
 
   const handlePieClick = (entry: any) => {
     if (entry && entry.name) {
@@ -1194,6 +1283,23 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         <option value="profit">Profit</option>
                     </select>
                 )}
+                
+                {/* Multi-Metric specific filters */}
+                {breakdownView === 'multi-metric' && (
+                    <>
+                        <select value={multiMetricDateRange} onChange={(e) => setMultiMetricDateRange(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="all">All Time</option>
+                            <option value="this_month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                            <option value="this_quarter">This Quarter</option>
+                        </select>
+                        <select value={multiMetricView} onChange={(e) => setMultiMetricView(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="all">Commission + Bonus</option>
+                            <option value="commission">Commission Only</option>
+                            <option value="bonus">Bonus Only</option>
+                        </select>
+                    </>
+                )}
             </div>
         </div>
         
@@ -1223,13 +1329,35 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                             stroke="#94a3b8"
                             label={{ value: 'Cumulative ($)', angle: 90, position: 'insideRight', fontSize: 10 }}
                         />
-                        <Tooltip content={<CustomTooltipTrend />} />
+                        <Tooltip 
+                            content={({ active, payload }) => {
+                                if (!active || !payload || payload.length === 0) return null;
+                                const data = payload[0]?.payload;
+                                if (!data) return null;
+                                return (
+                                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
+                                        <p className="font-semibold text-slate-800 mb-2">{data.dateStr}</p>
+                                        <div className="space-y-1">
+                                            <p><span className="text-indigo-600">Spend:</span> ${data.spend?.toFixed(0)}</p>
+                                            {multiMetricView !== 'bonus' && <p><span className="text-blue-600">Commission:</span> ${data.commission?.toFixed(0)}</p>}
+                                            {multiMetricView !== 'commission' && <p><span className="text-amber-600">Bonus:</span> ${data.bonus?.toFixed(0)}</p>}
+                                            <p><span className="text-emerald-600">Earning:</span> ${data.earning?.toFixed(0)}</p>
+                                            <p><span className={data.profit >= 0 ? 'text-green-600' : 'text-red-600'}>Profit:</span> ${data.profit?.toFixed(0)}</p>
+                                            <p><span className="text-purple-600">Margin ({(data.marginShare * 100).toFixed(0)}%):</span> ${data.margin?.toFixed(0)}</p>
+                                            <hr className="my-1 border-slate-200" />
+                                            <p><span className="text-pink-600">Cumulative Margin:</span> ${data.cumulativeMargin?.toFixed(0)}</p>
+                                        </div>
+                                    </div>
+                                );
+                            }}
+                        />
                         <Legend wrapperStyle={{fontSize: '11px', paddingTop: '10px'}} />
                         <ReferenceLine yAxisId="left" y={0} stroke="#94a3b8" strokeDasharray="2 2" />
-                        <Bar yAxisId="left" dataKey="spend" fill="#6366f1" name="Daily Spend" opacity={0.6} />
-                        <Bar yAxisId="left" dataKey="profit" fill="#10b981" name="Daily Profit" opacity={0.6} />
-                        <Bar yAxisId="left" dataKey="margin" fill="#f59e0b" name="Daily Margin" opacity={0.8} />
-                        <Line yAxisId="right" type="monotone" dataKey="cumulativeMargin" stroke="#ec4899" strokeWidth={2.5} name="Cumulative Margin" dot={{ r: 3 }} />
+                        <Bar yAxisId="left" dataKey="spend" fill="#6366f1" name="Spend" opacity={0.6} />
+                        {multiMetricView !== 'bonus' && <Bar yAxisId="left" dataKey="commission" fill="#3b82f6" name="Commission" opacity={0.7} />}
+                        {multiMetricView !== 'commission' && <Bar yAxisId="left" dataKey="bonus" fill="#f59e0b" name="Bonus" opacity={0.7} />}
+                        <Bar yAxisId="left" dataKey="margin" fill="#a855f7" name="Margin" opacity={0.8} />
+                        <Line yAxisId="right" type="monotone" dataKey="cumulativeMargin" stroke="#ec4899" strokeWidth={2.5} name="Cum. Margin" dot={{ r: 3 }} />
                     </ComposedChart>
                 ) : breakdownView === 'trend' ? (
                     compMetric === 'roi' ? (

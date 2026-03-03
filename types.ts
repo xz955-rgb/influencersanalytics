@@ -102,23 +102,33 @@ export interface CreatorSettlement {
   creatorName: string;
   adSpend: number;                // Total ad spend for period
   commissionEarning: number;      // Total commission earning for period
-  profit: number;                 // Commission - Spend
-  bonusDiff: number;              // Total tier bonus - Organic tier bonus
+  bonus: number;                  // Actual or estimated bonus for period
+  profit: number;                 // (Commission + Bonus) - Spend
+  bonusDiff: number;              // Total tier bonus - Organic tier bonus (for estimated)
   bonusDiffWeekly: number;        // Estimated weekly bonus diff
-  marginTecdo: number;            // 50% × (Profit + Bonus Diff) if profit > 0, else 50% × Bonus Diff
+  marginShare: number;            // Creator's margin share ratio (e.g., 0.35 for 35%)
+  marginTecdo: number;            // marginShare × profit if profit > 0, else absorb all loss
   isProfitable: boolean;          // profit > 0
   totalTierBonus: number;         // Bonus based on total shipped revenue
   organicTierBonus: number;       // Bonus based on organic shipped revenue
+  isActualData: boolean;          // true if using actual Monthly Earning Cal data
 }
 
 // Overall earnings summary
 export interface EarningsSummary {
   totalSpend: number;
   totalCommission: number;
+  totalBonus: number;
   totalProfit: number;
   totalBonusDiff: number;
   totalMarginTecdo: number;
   creatorSettlements: CreatorSettlement[];
+  isActualData: boolean;          // true if using actual Monthly Earning Cal data
+}
+
+// Extended summary with margin share info
+export interface EarningsSummaryWithMarginShare extends EarningsSummary {
+  avgMarginShare: number;         // Weighted average margin share
 }
 
 // Time range preset
@@ -129,3 +139,17 @@ export type TimeRangePreset =
   | 'last_month' 
   | 'this_quarter'
   | 'custom';
+
+// Monthly Earning Cal - actual historical data per creator per month
+export interface CreatorMonthlyEarning {
+  creatorName: string;
+  marginShare: number;        // e.g., 0.35 for 35%
+  monthlyData: Map<string, MonthlyEarningData>;  // key: "YYYY-MM", e.g., "2026-01"
+}
+
+export interface MonthlyEarningData {
+  month: string;              // "YYYY-MM" format
+  commission: number;         // Actual commission for the month
+  bonus: number;              // Actual bonus for the month
+  adSpend: number;            // Actual ad spend for the month
+}
