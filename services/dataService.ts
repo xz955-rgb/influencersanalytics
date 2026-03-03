@@ -544,10 +544,16 @@ export const calculateCreatorSettlements = (
   endDate: Date,
   isMonthlyPeriod: boolean = false // Pass true for "This Month" or "Last Month"
 ): EarningsSummary => {
+  // Normalize to full-day boundaries to avoid dropping same-day rows with time parts.
+  const rangeStart = new Date(startDate);
+  rangeStart.setHours(0, 0, 0, 0);
+  const rangeEnd = new Date(endDate);
+  rangeEnd.setHours(23, 59, 59, 999);
+
   // Filter ad data by date range
   const filteredData = adData.filter(d => {
     const date = new Date(d.date);
-    return date >= startDate && date <= endDate;
+    return date >= rangeStart && date <= rangeEnd;
   });
 
   // Aggregate spend and earning by creator (from ad data)
