@@ -428,7 +428,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
         const emailMonthStart = new Date(emailYear, emailMon - 1, 1);
         const emailMonthEnd = new Date(emailYear, emailMon, 0);
         const emailSettlements = emailBonusCalData.length > 0 
-          ? calculateCreatorSettlements(adData, emailBonusCalData, monthlyEarningData, emailMonthStart, emailMonthEnd, true).creatorSettlements
+          ? calculateCreatorSettlements(adData, emailBonusCalData, emailMonthStart, emailMonthEnd, true).creatorSettlements
           : [];
         
         const dataMonth = emailMonthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
