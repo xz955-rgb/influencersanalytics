@@ -1,6 +1,6 @@
 import { AdData, AdDataRaw, CreatorTierData, TierLevel, CreatorBonusCalData, CreatorSettlement, EarningsSummary, MonthlyEarningData, CreatorMonthlyEarning, EarningsSummaryWithMarginShare } from '../types';
 
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RgMqmnUTBDaHyAfqLtB70/pub?output=csv';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RXtp9vUyu-UnIazbcW-CAy-Y91COaMD-u--oeekb2D/pub?output=csv';
 
 // Bonus Cal CSV URL - using export format with gid for the specific tab
 const BONUS_CAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1134944905';
