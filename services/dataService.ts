@@ -697,14 +697,16 @@ export const calculateCreatorSettlements = (
   });
 
   // Helper: compute estimated bonus diff for a single month for a creator
-  const estimateMonthBonus = (creatorName: string, month: string): { bonus: number; projTier: number; orgTier: number } => {
-    const bc = bonusCalByKey.get(`${creatorName}|${month}`) || latestBonusCalByCreator.get(creatorName);
+  // allowFallback: only true for current/single month — prevents using latest data for past months where creator wasn't active
+  const estimateMonthBonus = (creatorName: string, month: string, allowFallback: boolean): { bonus: number; projTier: number; orgTier: number } => {
+    const exactMatch = bonusCalByKey.get(`${creatorName}|${month}`);
+    const bc = exactMatch || (allowFallback ? latestBonusCalByCreator.get(creatorName) : undefined);
     if (!bc || bc.tiers.length === 0) return { bonus: 0, projTier: 0, orgTier: 0 };
 
     let sales = bc.totalShippedRevenue;
     let organic = bc.shippedRevOrganic;
 
-    if (bc.dataMonth === currentMonthStr) {
+    if (month === currentMonthStr || bc.dataMonth === currentMonthStr) {
       const daysSoFar = Math.max(1, now.getDate());
       const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       sales = (sales / daysSoFar) * totalDays;
@@ -748,8 +750,9 @@ export const calculateCreatorSettlements = (
             totalOrgTier += calculateTierBonus(bc.shippedRevOrganic, bc.tiers);
           }
         } else {
-          // Estimated month (typically the current incomplete month)
-          const est = estimateMonthBonus(creatorName, month);
+          // Estimated month — only fall back to latest data for current month
+          const isCurrentMonth = month === currentMonthStr;
+          const est = estimateMonthBonus(creatorName, month, isCurrentMonth);
           totalBonus += est.bonus;
           totalProjTier += est.projTier;
           totalOrgTier += est.orgTier;
@@ -793,7 +796,7 @@ export const calculateCreatorSettlements = (
       } else {
         const bc = latestBonusCalByCreator.get(creatorName);
         commissionEarning = bc ? bc.commissionAds : adInfo.earning;
-        const est = estimateMonthBonus(creatorName, periodMonth);
+        const est = estimateMonthBonus(creatorName, periodMonth, true);
         bonusAmount = est.bonus;
         projectedTotalTierBonus = est.projTier;
         organicTierBonus = est.orgTier;
@@ -802,7 +805,7 @@ export const calculateCreatorSettlements = (
     } else {
       // ---- SUB-MONTH (weekly) path: prorate from monthly estimate ----
       commissionEarning = adInfo.earning;
-      const est = estimateMonthBonus(creatorName, periodMonth);
+      const est = estimateMonthBonus(creatorName, periodMonth, true);
       bonusAmount = est.bonus * periodRatio;
       projectedTotalTierBonus = est.projTier;
       organicTierBonus = est.orgTier;
