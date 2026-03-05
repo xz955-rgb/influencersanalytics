@@ -645,91 +645,167 @@ export const calculateCreatorSettlements = (
     });
   });
 
-  // Check for actual monthly earning data for this period
-  const periodMonth = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-  const actualMonthData = monthlyEarningData.filter(d => d.month === periodMonth);
-  const hasActualMonthData = isMonthlyPeriod && actualMonthData.length > 0;
-
-  // Build lookup maps
-  const actualDataMap = new Map<string, MonthlyEarningRow>();
-  actualMonthData.forEach(d => actualDataMap.set(d.creatorName, d));
-
   // Collect latest marginShare per creator across all months
   const marginShareMap = new Map<string, number>();
   monthlyEarningData.forEach(d => {
     if (d.marginShare > 0) marginShareMap.set(d.creatorName, d.marginShare);
   });
 
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  // Build bonus cal lookup: creator+month → data, and latest per creator
+  const bonusCalByKey = new Map<string, CreatorBonusCalData>();
+  const latestBonusCalByCreator = new Map<string, CreatorBonusCalData>();
+  bonusCalData.forEach(bc => {
+    bonusCalByKey.set(`${bc.creatorName}|${bc.dataMonth}`, bc);
+    const existing = latestBonusCalByCreator.get(bc.creatorName);
+    if (!existing || bc.dataMonth > existing.dataMonth) {
+      latestBonusCalByCreator.set(bc.creatorName, bc);
+    }
+  });
+
+  // Detect multi-month period
+  const spansMultipleMonths = startDate.getFullYear() !== endDate.getFullYear() || startDate.getMonth() !== endDate.getMonth();
+
+  // Build list of months in range
+  const monthsInRange: string[] = [];
+  if (spansMultipleMonths) {
+    let cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const endLimit = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    while (cursor <= endLimit) {
+      monthsInRange.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  }
+
+  // Single-month helpers
+  const periodMonth = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
   const periodDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const daysInMonth = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
   const periodRatio = periodDays / daysInMonth;
 
-  const bonusCalMap = new Map<string, CreatorBonusCalData>();
-  bonusCalData.forEach(bc => bonusCalMap.set(bc.creatorName, bc));
-
-  const now = new Date();
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const daysRemaining = Math.max(1, Math.ceil((endOfMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-
   const settlements: CreatorSettlement[] = [];
 
-  // Collect all creator names from both ad data and actual monthly data
+  // Collect all creator names
   const allCreators = new Set<string>();
   creatorAdMap.forEach((_, name) => allCreators.add(name));
-  if (hasActualMonthData) {
-    actualMonthData.forEach(d => allCreators.add(d.creatorName));
-  }
+  // Add creators from actual data for all months in range
+  const relevantMonths = spansMultipleMonths ? monthsInRange : [periodMonth];
+  monthlyEarningData.forEach(d => {
+    if (relevantMonths.includes(d.month)) allCreators.add(d.creatorName);
+  });
+
+  // Helper: compute estimated bonus diff for a single month for a creator
+  const estimateMonthBonus = (creatorName: string, month: string): { bonus: number; projTier: number; orgTier: number } => {
+    const bc = bonusCalByKey.get(`${creatorName}|${month}`) || latestBonusCalByCreator.get(creatorName);
+    if (!bc || bc.tiers.length === 0) return { bonus: 0, projTier: 0, orgTier: 0 };
+
+    let sales = bc.totalShippedRevenue;
+    let organic = bc.shippedRevOrganic;
+
+    if (bc.dataMonth === currentMonthStr) {
+      const daysSoFar = Math.max(1, now.getDate());
+      const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      sales = (sales / daysSoFar) * totalDays;
+      organic = (organic / daysSoFar) * totalDays;
+    }
+
+    const projTier = calculateTierBonus(sales, bc.tiers);
+    const orgTier = calculateTierBonus(organic, bc.tiers);
+    return { bonus: projTier - orgTier, projTier, orgTier };
+  };
 
   allCreators.forEach(creatorName => {
     const adInfo = creatorAdMap.get(creatorName) || { spend: 0, earning: 0 };
-    const bonusCal = bonusCalMap.get(creatorName);
-    const actualRow = hasActualMonthData ? actualDataMap.get(creatorName) : undefined;
     const mShare = marginShareMap.get(creatorName) ?? 0.5;
-
     const adSpend = adInfo.spend;
+
     let commissionEarning: number;
     let bonusAmount: number;
     let isActual = false;
     let projectedTotalTierBonus = 0;
     let organicTierBonus = 0;
 
-    if (actualRow) {
-      // ---- ACTUAL DATA path: past month with Monthly Earning Cal data ----
-      commissionEarning = actualRow.commission;
-      bonusAmount = actualRow.bonus;
-      isActual = true;
-      // Still compute tier breakdown for display (informational)
-      if (bonusCal && bonusCal.tiers.length > 0) {
-        projectedTotalTierBonus = calculateTierBonus(bonusCal.totalShippedRevenue, bonusCal.tiers);
-        organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
-      }
-    } else {
-      // ---- ESTIMATED path: current month or no actual data ----
-      commissionEarning = isMonthlyPeriod && bonusCal
-        ? bonusCal.commissionAds
-        : adInfo.earning;
+    if (spansMultipleMonths && !isMonthlyPeriod) {
+      // ---- MULTI-MONTH path: aggregate per month ----
+      let totalCommission = 0;
+      let totalBonus = 0;
+      let totalProjTier = 0;
+      let totalOrgTier = 0;
+      let anyActual = false;
 
-      let bonusDiffMonthly = 0;
-      if (bonusCal && bonusCal.tiers.length > 0) {
-        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const isCurrentMonthData = bonusCal.dataMonth === currentMonth;
-
-        let salesForBonus = bonusCal.totalShippedRevenue;
-        let organicForBonus = bonusCal.shippedRevOrganic;
-
-        if (isCurrentMonthData) {
-          // Project to end of month: daily average × days in month
-          const daysSoFar = Math.max(1, now.getDate());
-          const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-          salesForBonus = (bonusCal.totalShippedRevenue / daysSoFar) * totalDaysInMonth;
-          organicForBonus = (bonusCal.shippedRevOrganic / daysSoFar) * totalDaysInMonth;
+      for (const month of monthsInRange) {
+        const actualRow = monthlyEarningData.find(d => d.creatorName === creatorName && d.month === month);
+        if (actualRow) {
+          anyActual = true;
+          totalCommission += actualRow.commission;
+          totalBonus += actualRow.bonus;
+          // Tier breakdown for display
+          const bc = bonusCalByKey.get(`${creatorName}|${month}`);
+          if (bc && bc.tiers.length > 0) {
+            totalProjTier += calculateTierBonus(bc.totalShippedRevenue, bc.tiers);
+            totalOrgTier += calculateTierBonus(bc.shippedRevOrganic, bc.tiers);
+          }
+        } else {
+          // Estimated month (typically the current incomplete month)
+          const est = estimateMonthBonus(creatorName, month);
+          totalBonus += est.bonus;
+          totalProjTier += est.projTier;
+          totalOrgTier += est.orgTier;
         }
-
-        projectedTotalTierBonus = calculateTierBonus(salesForBonus, bonusCal.tiers);
-        organicTierBonus = calculateTierBonus(organicForBonus, bonusCal.tiers);
-        bonusDiffMonthly = projectedTotalTierBonus - organicTierBonus;
       }
-      bonusAmount = isMonthlyPeriod ? bonusDiffMonthly : bonusDiffMonthly * periodRatio;
+
+      // Commission: use actual sum for past months + ad data for current month
+      // If we had any actual months, add ad data only for the non-actual months
+      if (anyActual) {
+        // Add ad data commission for months without actual data
+        filteredData.forEach(item => {
+          if (item.creatorName !== creatorName) return;
+          const d = new Date(item.date);
+          const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (!monthlyEarningData.some(r => r.creatorName === creatorName && r.month === m)) {
+            totalCommission += item.earning;
+          }
+        });
+        commissionEarning = totalCommission;
+      } else {
+        commissionEarning = adInfo.earning;
+      }
+
+      bonusAmount = totalBonus;
+      projectedTotalTierBonus = totalProjTier;
+      organicTierBonus = totalOrgTier;
+      isActual = anyActual;
+
+    } else if (isMonthlyPeriod) {
+      // ---- SINGLE MONTH path ----
+      const actualRow = monthlyEarningData.find(d => d.creatorName === creatorName && d.month === periodMonth);
+      if (actualRow) {
+        commissionEarning = actualRow.commission;
+        bonusAmount = actualRow.bonus;
+        isActual = true;
+        const bc = bonusCalByKey.get(`${creatorName}|${periodMonth}`);
+        if (bc && bc.tiers.length > 0) {
+          projectedTotalTierBonus = calculateTierBonus(bc.totalShippedRevenue, bc.tiers);
+          organicTierBonus = calculateTierBonus(bc.shippedRevOrganic, bc.tiers);
+        }
+      } else {
+        const bc = latestBonusCalByCreator.get(creatorName);
+        commissionEarning = bc ? bc.commissionAds : adInfo.earning;
+        const est = estimateMonthBonus(creatorName, periodMonth);
+        bonusAmount = est.bonus;
+        projectedTotalTierBonus = est.projTier;
+        organicTierBonus = est.orgTier;
+      }
+
+    } else {
+      // ---- SUB-MONTH (weekly) path: prorate from monthly estimate ----
+      commissionEarning = adInfo.earning;
+      const est = estimateMonthBonus(creatorName, periodMonth);
+      bonusAmount = est.bonus * periodRatio;
+      projectedTotalTierBonus = est.projTier;
+      organicTierBonus = est.orgTier;
     }
 
     if (commissionEarning === 0 && bonusAmount === 0 && adSpend === 0) return;

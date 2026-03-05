@@ -125,8 +125,9 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
         totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [],
       };
     }
-    return calculateCreatorSettlements(adData, filteredBonusCalData, startDate, endDate, useBonusCalCommission || hasActualMonthlyData, monthlyEarningData);
-  }, [adData, filteredBonusCalData, startDate, endDate, useBonusCalCommission, hasValidData, hasActualMonthlyData, monthlyEarningData]);
+    // Pass ALL bonusCalData so multi-month periods can look up any month
+    return calculateCreatorSettlements(adData, bonusCalData, startDate, endDate, isMonthlyPeriod, monthlyEarningData);
+  }, [adData, bonusCalData, startDate, endDate, isMonthlyPeriod, hasValidData, hasActualMonthlyData, monthlyEarningData]);
 
   const sortedSettlements = useMemo(() => {
     const sorted = [...earningsSummary.creatorSettlements];
