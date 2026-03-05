@@ -698,6 +698,11 @@ export const calculateCreatorSettlements = (
       commissionEarning = actualRow.commission;
       bonusAmount = actualRow.bonus;
       isActual = true;
+      // Still compute tier breakdown for display (informational)
+      if (bonusCal && bonusCal.tiers.length > 0) {
+        projectedTotalTierBonus = calculateTierBonus(bonusCal.totalShippedRevenue, bonusCal.tiers);
+        organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
+      }
     } else {
       // ---- ESTIMATED path: current month or no actual data ----
       commissionEarning = isMonthlyPeriod && bonusCal

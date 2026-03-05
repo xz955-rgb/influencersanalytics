@@ -3,7 +3,7 @@ import { AdData, CreatorTierData, CreatorBonusCalData, MonthlyEarningRow } from 
 import { KpiCard } from './KpiCard';
 import { TierRewardsTracker } from './TierRewardsTracker';
 import { 
-  BarChart, Bar, LineChart, Line, ScatterChart, Scatter, PieChart, Pie, ComposedChart,
+  BarChart, Bar, LineChart, Line, ScatterChart, Scatter, PieChart, Pie, ComposedChart, Area,
   XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, 
   ResponsiveContainer, Cell, ReferenceLine, ReferenceArea
 } from 'recharts';
@@ -211,6 +211,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   // ----------------------------------------------------------------------
   const [breakdownView, setBreakdownView] = useState<'trend' | 'margin'>('trend');
   const [marginRange, setMarginRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('all');
+  const [marginChartMode, setMarginChartMode] = useState<'daily' | 'cumulative'>('cumulative');
   const [marginCreator, setMarginCreator] = useState<string>('');
   const [marginCategory, setMarginCategory] = useState<string>('');
   const [marginTheme, setMarginTheme] = useState<string>('');
@@ -424,7 +425,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   const [drillDimension, setDrillDimension] = useState<'platform' | 'category' | 'theme' | 'all'>('category');
   const [drillValue, setDrillValue] = useState<string>('');
   const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
-  const [filterListBySelected, setFilterListBySelected] = useState(false);
+  const [listFilterPosts, setListFilterPosts] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'spend', direction: 'desc' });
   const [deepDiveRoiFilter, setDeepDiveRoiFilter] = useState<'all' | 'high' | 'low'>('all');
   const [deepDiveUseLogScale, setDeepDiveUseLogScale] = useState(false);
@@ -579,7 +580,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     } else {
       setSelectedPosts([]);
     }
-    setFilterListBySelected(false);
+    setListFilterPosts([]);
   }, [postNamesInSegment, drillValue, drillDimension]);
 
   const togglePostSelection = (postName: string) => {
@@ -666,8 +667,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
      if (targetPosts.length > 0) {
         userSelectedRef.current = true;
         setDrillDimension('all');
-        setSelectedPosts(targetPosts);
-        setFilterListBySelected(true);
+        setSelectedPosts([]);
+        setListFilterPosts(targetPosts);
         scrollToDeepDive();
      }
   };
@@ -677,7 +678,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
          userSelectedRef.current = true;
          setDrillDimension('all');
          setSelectedPosts([data.contentName]);
-         setFilterListBySelected(true);
+         setListFilterPosts([data.contentName]);
          scrollToDeepDive();
      }
   };
@@ -1203,7 +1204,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
       )}
 
       {/* 2. Performance Trend / Margin Analysis Section */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col" style={{minHeight: breakdownView === 'margin' ? '860px' : '520px'}}>
+      <div className={`bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col ${breakdownView === 'margin' ? '' : 'h-[520px]'}`}>
         <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-4 gap-4">
             <div className="flex items-center gap-2">
                 {breakdownView === 'trend' ? <TrendingUp className="w-5 h-5 text-indigo-600" /> : <DollarSign className="w-5 h-5 text-green-600" />}
@@ -1281,40 +1282,64 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         
         {breakdownView === 'margin' ? (
         <div className="space-y-4 flex-1">
-            {/* Chart 1: Daily Bars + Cumulative Lines */}
+            {/* Toggle: Daily vs Cumulative */}
+            <div className="flex items-center gap-2">
+                <div className="flex bg-slate-100 rounded-lg p-0.5">
+                    <button onClick={() => setMarginChartMode('daily')} className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${marginChartMode === 'daily' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Daily</button>
+                    <button onClick={() => setMarginChartMode('cumulative')} className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${marginChartMode === 'cumulative' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Cumulative</button>
+                </div>
+            </div>
+            {/* Main Chart: area + lines */}
             <div>
-                <p className="text-xs font-semibold text-slate-500 mb-1">Daily Spend & Margins + Cumulative (right axis)</p>
+                <p className="text-xs font-semibold text-slate-500 mb-1">
+                    {marginChartMode === 'daily' ? 'Daily Ad Spend, Total Margin & AdMee Margin' : 'Cumulative Ad Spend, Total Margin & AdMee Margin'}
+                </p>
                 <div style={{height: 340}}>
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={marginChartData} margin={{ top: 10, right: 60, left: 10, bottom: 0 }}>
+                    <ComposedChart data={marginChartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                        <defs>
+                            <linearGradient id="gradSpend" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.25}/>
+                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.03}/>
+                            </linearGradient>
+                            <linearGradient id="gradTotal" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                                <stop offset="95%" stopColor="#10b981" stopOpacity={0.02}/>
+                            </linearGradient>
+                        </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="timestamp" type="number" domain={['auto','auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={11} stroke="#94a3b8" />
-                        <YAxis yAxisId="left" fontSize={11} stroke="#94a3b8" tickFormatter={(v: number) => `$${Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v.toFixed(0)}`} />
-                        <YAxis yAxisId="right" orientation="right" fontSize={11} stroke="#94a3b8" tickFormatter={(v: number) => `$${Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v.toFixed(0)}`} />
+                        <YAxis fontSize={11} stroke="#94a3b8" tickFormatter={(v: number) => `$${Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v.toFixed(0)}`} />
                         <Tooltip content={({ active, payload }) => {
                             if (!active || !payload?.length) return null;
                             const d = payload[0]?.payload;
                             if (!d) return null;
                             const fmt = (v: number) => '$' + v.toLocaleString(undefined, {maximumFractionDigits:0});
-                            return (<div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs space-y-1">
+                            if (marginChartMode === 'daily') return (<div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs space-y-1">
                                 <p className="font-semibold text-slate-800">{d.dateStr}</p>
                                 <p className="text-rose-500">Ad Spend: {fmt(d.spend)}</p>
                                 <p className="text-green-600">Total Margin (50%): {fmt(d.totalMargin)}</p>
                                 <p className="text-purple-600">AdMee Margin: {fmt(d.admeeMargin)}</p>
-                                <hr className="border-slate-100" />
-                                <p className="text-green-700">Cum Total Margin: {fmt(d.cumTotalMargin)}</p>
-                                <p className="text-purple-700">Cum AdMee Margin: {fmt(d.cumAdmeeMargin)}</p>
-                                <p className="text-slate-500">Cum Ad Spend: {fmt(d.cumSpend)}</p>
+                                <p className="text-slate-400 mt-1">Profit: {fmt(d.spend > 0 ? d.totalMargin / 0.5 : 0)}</p>
+                            </div>);
+                            return (<div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs space-y-1">
+                                <p className="font-semibold text-slate-800">{d.dateStr}</p>
+                                <p className="text-rose-500">Cum Spend: {fmt(d.cumSpend)}</p>
+                                <p className="text-green-600">Cum Total Margin: {fmt(d.cumTotalMargin)}</p>
+                                <p className="text-purple-600">Cum AdMee Margin: {fmt(d.cumAdmeeMargin)}</p>
                             </div>);
                         }} />
                         <Legend wrapperStyle={{fontSize: '10px', paddingTop: '8px'}} />
-                        <ReferenceLine yAxisId="left" y={0} stroke="#94a3b8" strokeDasharray="2 2" />
-                        <Bar yAxisId="left" dataKey="spend" fill="#f43f5e" name="Daily Spend" opacity={0.4} />
-                        <Bar yAxisId="left" dataKey="totalMargin" fill="#10b981" name="Total Margin (50%)" opacity={0.7} />
-                        <Bar yAxisId="left" dataKey="admeeMargin" fill="#8b5cf6" name="AdMee Margin" opacity={0.8} />
-                        <Line yAxisId="right" type="monotone" dataKey="cumSpend" stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="4 2" name="Cum Spend" dot={false} />
-                        <Line yAxisId="right" type="monotone" dataKey="cumTotalMargin" stroke="#10b981" strokeWidth={2} name="Cum Total Margin" dot={false} />
-                        <Line yAxisId="right" type="monotone" dataKey="cumAdmeeMargin" stroke="#8b5cf6" strokeWidth={2} name="Cum AdMee Margin" dot={false} />
+                        <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="2 2" />
+                        {marginChartMode === 'daily' ? (<>
+                            <Area type="monotone" dataKey="spend" fill="url(#gradSpend)" stroke="#f43f5e" strokeWidth={1.5} name="Ad Spend" dot={false} />
+                            <Line type="monotone" dataKey="totalMargin" stroke="#10b981" strokeWidth={2.5} name="Total Margin (50%)" dot={false} activeDot={{ r: 4 }} />
+                            <Line type="monotone" dataKey="admeeMargin" stroke="#8b5cf6" strokeWidth={2.5} name="AdMee Margin" dot={false} activeDot={{ r: 4 }} />
+                        </>) : (<>
+                            <Area type="monotone" dataKey="cumSpend" fill="url(#gradSpend)" stroke="#f43f5e" strokeWidth={1.5} name="Cum Ad Spend" dot={false} />
+                            <Area type="monotone" dataKey="cumTotalMargin" fill="url(#gradTotal)" stroke="#10b981" strokeWidth={2.5} name="Cum Total Margin" dot={false} />
+                            <Line type="monotone" dataKey="cumAdmeeMargin" stroke="#8b5cf6" strokeWidth={2.5} name="Cum AdMee Margin" dot={false} activeDot={{ r: 4 }} />
+                        </>)}
                     </ComposedChart>
                 </ResponsiveContainer>
                 </div>
@@ -1322,7 +1347,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
             {/* Chart 2: Margin ROI ratio lines */}
             <div>
                 <p className="text-xs font-semibold text-slate-500 mb-1">Cumulative Margin / Cumulative Spend (efficiency over time)</p>
-                <div style={{height: 220}}>
+                <div style={{height: 200}}>
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={marginChartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -1792,9 +1817,9 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                 {deepDiveStatusFilter !== 'all' && <span className="ml-2 text-slate-400">• {deepDiveStatusFilter === 'active' ? 'Active' : 'Off'}</span>}
             </span>
             <div className="flex items-center gap-2">
-                {filterListBySelected && selectedPosts.length > 0 && (
+                {listFilterPosts.length > 0 && (
                     <button 
-                        onClick={() => setFilterListBySelected(false)}
+                        onClick={() => setListFilterPosts([])}
                         className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium"
                     >
                         <FilterX className="w-3 h-3" /> Show All Posts
@@ -1850,8 +1875,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         <tbody className="bg-white divide-y divide-slate-100">
                             {postsInSegmentAggregated
                                 .filter(post => {
-                                    // Selection filter — when user clicked strategy card / scatter dot
-                                    if (filterListBySelected && selectedPosts.length > 0 && !selectedPosts.includes(post.contentName)) return false;
+                                    // Strategy card / scatter click filter
+                                    if (listFilterPosts.length > 0 && !listFilterPosts.includes(post.contentName)) return false;
                                     // Search filter
                                     if (deepDiveSearch.trim()) {
                                         const searchLower = deepDiveSearch.toLowerCase();

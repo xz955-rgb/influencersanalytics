@@ -90,12 +90,21 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
     return Array.from(months).sort().reverse(); // Most recent first
   }, [bonusCalData]);
 
-  // Filter Bonus Cal data by selected month - ONLY use data for the matching month
+  // Filter Bonus Cal data — use exact month if available, otherwise latest per creator
   const filteredBonusCalData = useMemo(() => {
-    return bonusCalData.filter(d => d.dataMonth === selectedMonth);
+    const monthMatch = bonusCalData.filter(d => d.dataMonth === selectedMonth);
+    if (monthMatch.length > 0) return monthMatch;
+    // Fall back to latest available data per creator for tier estimation
+    const latestByCreator = new Map<string, CreatorBonusCalData>();
+    bonusCalData.forEach(d => {
+      const existing = latestByCreator.get(d.creatorName);
+      if (!existing || d.dataMonth > existing.dataMonth) {
+        latestByCreator.set(d.creatorName, d);
+      }
+    });
+    return Array.from(latestByCreator.values());
   }, [bonusCalData, selectedMonth]);
 
-  // Check if we have Bonus Cal data for the selected month
   const hasBonusCalDataForMonth = filteredBonusCalData.length > 0;
 
   // For monthly periods, we need either Bonus Cal data OR Monthly Earning Cal data
