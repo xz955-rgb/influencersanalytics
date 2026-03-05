@@ -209,9 +209,11 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   // ----------------------------------------------------------------------
   // 3. Breakdown Analysis (Charts)
   // ----------------------------------------------------------------------
-  const [breakdownView, setBreakdownView] = useState<'trend' | 'distribution' | 'multi-metric'>('trend');
-  const [multiMetricRange, setMultiMetricRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('all');
-  const [multiMetricView, setMultiMetricView] = useState<'all' | 'commission' | 'bonus'>('all');
+  const [breakdownView, setBreakdownView] = useState<'trend' | 'margin'>('trend');
+  const [marginRange, setMarginRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('all');
+  const [marginCreator, setMarginCreator] = useState<string>('');
+  const [marginCategory, setMarginCategory] = useState<string>('');
+  const [marginTheme, setMarginTheme] = useState<string>('');
   const [compDimension, setCompDimension] = useState<'creatorName' | 'category' | 'theme'>('category');
   const [compMetric, setCompMetric] = useState<'spend' | 'roi' | 'earning' | 'profit'>('roi');
   const [focusEntity, setFocusEntity] = useState<string>(''); 
@@ -308,40 +310,35 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     return { data: result, keys: targetEntities };
   }, [data, compDimension, compMetric, targetEntities]);
 
-  // Multi-metric: date range helper
-  const multiMetricDateRange = useMemo(() => {
+  // Unique filter options for margin chart
+  const marginFilterOptions = useMemo(() => ({
+    creators: Array.from(new Set(data.map(d => d.creatorName))).sort(),
+    categories: Array.from(new Set(data.map(d => d.category))).sort(),
+    themes: Array.from(new Set(data.map(d => d.theme))).sort(),
+  }), [data]);
+
+  // Margin chart data
+  const marginChartData = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    switch (multiMetricRange) {
-      case 'this_month': {
-        return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: today };
-      }
-      case 'last_month': {
-        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        const last = new Date(today.getFullYear(), today.getMonth(), 0);
-        return { start: first, end: last };
-      }
-      case 'this_quarter': {
-        const q = Math.floor(today.getMonth() / 3);
-        return { start: new Date(today.getFullYear(), q * 3, 1), end: today };
-      }
-      default:
-        return { start: null, end: null }; // all time
-    }
-  }, [multiMetricRange]);
+    let rangeStart: Date | null = null;
+    let rangeEnd: Date | null = null;
+    if (marginRange === 'this_month') { rangeStart = new Date(today.getFullYear(), today.getMonth(), 1); rangeEnd = today; }
+    else if (marginRange === 'last_month') { rangeStart = new Date(today.getFullYear(), today.getMonth() - 1, 1); rangeEnd = new Date(today.getFullYear(), today.getMonth(), 0); }
+    else if (marginRange === 'this_quarter') { const q = Math.floor(today.getMonth() / 3); rangeStart = new Date(today.getFullYear(), q * 3, 1); rangeEnd = today; }
 
-  // Multi-metric aggregated data with bonus, margin share
-  const multiMetricData = useMemo(() => {
-    const { start: rangeStart, end: rangeEnd } = multiMetricDateRange;
-
-    // Filter ad data by multi-metric time range
     const filtered = data.filter(d => {
-      if (!rangeStart || !rangeEnd) return true;
-      const date = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate());
-      return date >= rangeStart && date <= rangeEnd;
+      if (rangeStart && rangeEnd) {
+        const date = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate());
+        if (date < rangeStart || date > rangeEnd) return false;
+      }
+      if (marginCreator && d.creatorName !== marginCreator) return false;
+      if (marginCategory && d.category !== marginCategory) return false;
+      if (marginTheme && d.theme !== marginTheme) return false;
+      return true;
     });
 
-    // Aggregate ad data by date → { spend, earning per creator }
+    // Aggregate by date + creator
     const dateCreatorMap = new Map<number, Map<string, { spend: number; earning: number }>>();
     filtered.forEach(d => {
       const dateKey = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate()).getTime();
@@ -351,126 +348,74 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
       cm.set(d.creatorName, { spend: prev.spend + d.spend, earning: prev.earning + d.earning });
     });
 
-    // Build marginShare lookup (latest across all months)
-    const marginShareMap = new Map<string, number>();
-    monthlyEarningData.forEach(d => {
-      if (d.marginShare > 0) marginShareMap.set(d.creatorName, d.marginShare);
-    });
+    // MarginShare lookup
+    const msMap = new Map<string, number>();
+    monthlyEarningData.forEach(d => { if (d.marginShare > 0) msMap.set(d.creatorName, d.marginShare); });
 
-    // Build monthly bonus lookup per creator: month → creator → bonus
-    const monthlyBonusMap = new Map<string, Map<string, number>>(); // "YYYY-MM" → creator → bonus
+    // Monthly bonus lookup
+    const monthlyBonusMap = new Map<string, Map<string, number>>();
     monthlyEarningData.forEach(d => {
       if (!monthlyBonusMap.has(d.month)) monthlyBonusMap.set(d.month, new Map());
       monthlyBonusMap.get(d.month)!.set(d.creatorName, d.bonus);
     });
 
-    // Build bonus cal lookup for current-month estimation: creator → bonusDiff
-    const bonusCalCurrentMonth = new Map<string, number>();
-    const nowDate = new Date();
-    const currentMonthStr = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
-    const currentMonthBonusCal = bonusCalData.filter(bc => bc.dataMonth === currentMonthStr);
-    currentMonthBonusCal.forEach(bc => {
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const bonusCalCurrent = new Map<string, number>();
+    bonusCalData.filter(bc => bc.dataMonth === currentMonthStr).forEach(bc => {
       if (bc.tiers.length > 0) {
-        const totalBonus = calculateTierBonus(bc.totalShippedRevenue, bc.tiers);
-        const organicBonus = calculateTierBonus(bc.shippedRevOrganic, bc.tiers);
-        bonusCalCurrentMonth.set(bc.creatorName, totalBonus - organicBonus);
+        bonusCalCurrent.set(bc.creatorName, calculateTierBonus(bc.totalShippedRevenue, bc.tiers) - calculateTierBonus(bc.shippedRevOrganic, bc.tiers));
       }
     });
 
-    // Get all unique months present in date data
+    // Pre-compute daily bonus per month per creator
     const monthsInRange = new Set<string>();
-    dateCreatorMap.forEach((_, dateKey) => {
-      const d = new Date(dateKey);
-      monthsInRange.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    });
+    dateCreatorMap.forEach((_, dk) => { const d = new Date(dk); monthsInRange.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); });
 
-    // Pre-compute daily prorated bonus per creator per month
-    const dailyBonusPerMonth = new Map<string, Map<string, number>>(); // month → creator → dailyBonus
+    const dailyBonusPerMonth = new Map<string, Map<string, number>>();
     monthsInRange.forEach(month => {
       const [y, m] = month.split('-').map(Number);
-      const daysInMonth = new Date(y, m, 0).getDate();
-      const creatorDailyBonus = new Map<string, number>();
-
-      const actualMonthBonuses = monthlyBonusMap.get(month);
-      if (actualMonthBonuses) {
-        // Actual data from Monthly Earning Cal
-        actualMonthBonuses.forEach((bonus, creator) => {
-          creatorDailyBonus.set(creator, bonus / daysInMonth);
-        });
-      } else if (month === currentMonthStr) {
-        // Estimated from Bonus Cal for current month
-        bonusCalCurrentMonth.forEach((bonusDiff, creator) => {
-          creatorDailyBonus.set(creator, bonusDiff / daysInMonth);
-        });
-      }
-      dailyBonusPerMonth.set(month, creatorDailyBonus);
+      const dim = new Date(y, m, 0).getDate();
+      const cb = new Map<string, number>();
+      const actual = monthlyBonusMap.get(month);
+      if (actual) { actual.forEach((b, c) => cb.set(c, b / dim)); }
+      else if (month === currentMonthStr) { bonusCalCurrent.forEach((b, c) => cb.set(c, b / dim)); }
+      dailyBonusPerMonth.set(month, cb);
     });
 
-    // Build daily data points
-    const dailyData = Array.from(dateCreatorMap.entries())
-      .map(([dateKey, creatorMap]) => {
-        const d = new Date(dateKey);
-        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const dailyBonusLookup = dailyBonusPerMonth.get(month) || new Map();
+    const dailyData = Array.from(dateCreatorMap.entries()).map(([dateKey, creatorMap]) => {
+      const d = new Date(dateKey);
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const dbLookup = dailyBonusPerMonth.get(month) || new Map();
 
-        let totalSpend = 0;
-        let totalCommission = 0;
-        let totalBonus = 0;
-        let weightedMarginShareNum = 0;
-        let weightedMarginShareDen = 0;
+      let spend = 0, totalMargin = 0, admeeMargin = 0;
 
-        creatorMap.forEach(({ spend, earning }, creator) => {
-          totalSpend += spend;
-          totalCommission += earning;
-          totalBonus += dailyBonusLookup.get(creator) || 0;
-          const ms = marginShareMap.get(creator) ?? 0.5;
-          const creatorEarning = earning + (dailyBonusLookup.get(creator) || 0);
-          weightedMarginShareNum += ms * creatorEarning;
-          weightedMarginShareDen += creatorEarning;
-        });
+      creatorMap.forEach(({ spend: s, earning: comm }, creator) => {
+        const bonus = dbLookup.get(creator) || 0;
+        const profit = comm + bonus - s;
+        spend += s;
+        // Total Margin: 50% of profit (non-creator share), absorb full loss
+        totalMargin += profit > 0 ? 0.5 * profit : profit;
+        // AdMee Margin: marginShare% of profit, absorb full loss
+        const ms = msMap.get(creator) ?? 0.5;
+        admeeMargin += profit > 0 ? ms * profit : profit;
+      });
 
-        // Add bonus for creators in bonus data but not in ad data for this day
-        dailyBonusLookup.forEach((db, creator) => {
-          if (!creatorMap.has(creator)) totalBonus += db;
-        });
+      return { timestamp: dateKey, dateStr: new Date(dateKey).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        spend, totalMargin, admeeMargin,
+        cumSpend: 0, cumTotalMargin: 0, cumAdmeeMargin: 0,
+        totalRoi: 0, admeeRoi: 0 };
+    }).sort((a, b) => a.timestamp - b.timestamp);
 
-        const avgMarginShare = weightedMarginShareDen > 0 ? weightedMarginShareNum / weightedMarginShareDen : 0.5;
-
-        const earning = multiMetricView === 'commission' ? totalCommission
-                      : multiMetricView === 'bonus' ? totalBonus
-                      : totalCommission + totalBonus;
-        const profit = earning - totalSpend;
-        const margin = profit > 0 ? avgMarginShare * profit : profit;
-
-        return {
-          timestamp: dateKey,
-          dateStr: new Date(dateKey).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-          spend: totalSpend,
-          commission: totalCommission,
-          bonus: totalBonus,
-          earning,
-          profit,
-          margin,
-          cumulativeMargin: 0,
-        };
-      })
-      .sort((a, b) => a.timestamp - b.timestamp);
-
-    let runningMargin = 0;
-    dailyData.forEach(day => {
-      runningMargin += day.margin;
-      day.cumulativeMargin = runningMargin;
+    let rSpend = 0, rTotal = 0, rAdmee = 0;
+    dailyData.forEach(d => {
+      rSpend += d.spend; rTotal += d.totalMargin; rAdmee += d.admeeMargin;
+      d.cumSpend = rSpend; d.cumTotalMargin = rTotal; d.cumAdmeeMargin = rAdmee;
+      d.totalRoi = rSpend > 0 ? rTotal / rSpend : 0;
+      d.admeeRoi = rSpend > 0 ? rAdmee / rSpend : 0;
     });
 
     return dailyData;
-  }, [data, multiMetricDateRange, multiMetricView, monthlyEarningData, bonusCalData]);
-
-  const handlePieClick = (entry: any) => {
-    if (entry && entry.name) {
-        setFocusEntity(entry.name);
-        setBreakdownView('trend');
-    }
-  };
+  }, [data, marginRange, marginCreator, marginCategory, marginTheme, monthlyEarningData, bonusCalData]);
 
 
   // ----------------------------------------------------------------------
@@ -479,6 +424,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   const [drillDimension, setDrillDimension] = useState<'platform' | 'category' | 'theme' | 'all'>('category');
   const [drillValue, setDrillValue] = useState<string>('');
   const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
+  const [filterListBySelected, setFilterListBySelected] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'spend', direction: 'desc' });
   const [deepDiveRoiFilter, setDeepDiveRoiFilter] = useState<'all' | 'high' | 'low'>('all');
   const [deepDiveUseLogScale, setDeepDiveUseLogScale] = useState(false);
@@ -633,6 +579,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     } else {
       setSelectedPosts([]);
     }
+    setFilterListBySelected(false);
   }, [postNamesInSegment, drillValue, drillDimension]);
 
   const togglePostSelection = (postName: string) => {
@@ -717,18 +664,20 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         .map(d => d.contentName);
      
      if (targetPosts.length > 0) {
-        userSelectedRef.current = true; // Prevent auto-reset
+        userSelectedRef.current = true;
         setDrillDimension('all');
         setSelectedPosts(targetPosts);
+        setFilterListBySelected(true);
         scrollToDeepDive();
      }
   };
   
   const handleMatrixDotClick = (data: any) => {
      if (data && data.contentName) {
-         userSelectedRef.current = true; // Prevent auto-reset
+         userSelectedRef.current = true;
          setDrillDimension('all');
          setSelectedPosts([data.contentName]);
+         setFilterListBySelected(true);
          scrollToDeepDive();
      }
   };
@@ -1253,13 +1202,13 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         </div>
       )}
 
-      {/* 2. Performance Trend Section */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-[520px]">
+      {/* 2. Performance Trend / Margin Analysis Section */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col" style={{minHeight: breakdownView === 'margin' ? '860px' : '520px'}}>
         <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-4 gap-4">
             <div className="flex items-center gap-2">
-                {breakdownView === 'trend' ? <TrendingUp className="w-5 h-5 text-indigo-600" /> : breakdownView === 'distribution' ? <PieIcon className="w-5 h-5 text-indigo-600" /> : <Activity className="w-5 h-5 text-indigo-600" />}
+                {breakdownView === 'trend' ? <TrendingUp className="w-5 h-5 text-indigo-600" /> : <DollarSign className="w-5 h-5 text-green-600" />}
                 <h3 className="text-lg font-bold text-slate-800">
-                    {breakdownView === 'trend' ? 'Performance Trend by Segment' : breakdownView === 'distribution' ? 'Total Composition' : 'Multi-Metric Analysis'}
+                    {breakdownView === 'trend' ? 'Performance Trend by Segment' : 'Margin Analysis'}
                 </h3>
             </div>
             
@@ -1268,29 +1217,24 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                     <button onClick={() => setBreakdownView('trend')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'trend' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                         <TrendingUp className="w-3 h-3" /> Trend
                     </button>
-                    <button onClick={() => setBreakdownView('distribution')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'distribution' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                        <PieIcon className="w-3 h-3" /> Dist.
-                    </button>
-                    <button onClick={() => setBreakdownView('multi-metric')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'multi-metric' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                        <Activity className="w-3 h-3" /> Multi
+                    <button onClick={() => setBreakdownView('margin')} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${breakdownView === 'margin' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                        <DollarSign className="w-3 h-3" /> Margin
                     </button>
                 </div>
 
-                {breakdownView !== 'multi-metric' && (
+                {breakdownView === 'trend' && (
                 <>
                 <select value={compDimension} onChange={(e) => setCompDimension(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="category">Category</option>
                     <option value="creatorName">Creator</option>
                     <option value="theme">Theme</option>
                 </select>
-
                 <select value={topN} onChange={(e) => setTopN(Number(e.target.value))} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                     <option value={5}>Top 5</option>
                     <option value={10}>Top 10</option>
                     <option value={20}>Top 20</option>
                     <option value={-1}>All</option>
                 </select>
-
                 <div className="relative max-w-[140px]">
                     <select value={focusEntity} onChange={(e) => setFocusEntity(e.target.value)} className={`w-full appearance-none border py-1.5 px-2 pr-6 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500 ${focusEntity ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-medium' : 'bg-white border-slate-300 text-slate-700'}`}>
                         <option value="">Select Entity...</option>
@@ -1302,139 +1246,151 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         <ChevronDown className="absolute right-2 top-2 w-3 h-3 text-slate-400 pointer-events-none" />
                     )}
                 </div>
+                <select value={compMetric} onChange={(e) => setCompMetric(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="roi">ROI</option>
+                    <option value="spend">Spend</option>
+                    <option value="profit">Profit</option>
+                </select>
                 </>
                 )}
 
-                {breakdownView === 'multi-metric' ? (
-                    <>
-                        <select value={multiMetricRange} onChange={(e) => setMultiMetricRange(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <option value="this_month">This Month</option>
-                            <option value="last_month">Last Month</option>
-                            <option value="this_quarter">This Quarter</option>
-                            <option value="all">All Time</option>
-                        </select>
-                        <select value={multiMetricView} onChange={(e) => setMultiMetricView(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <option value="all">Commission + Bonus</option>
-                            <option value="commission">Commission Only</option>
-                            <option value="bonus">Bonus Only</option>
-                        </select>
-                    </>
-                ) : (
-                    <select value={compMetric} onChange={(e) => setCompMetric(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                        <option value="roi">ROI</option>
-                        <option value="spend">Spend</option>
-                        <option value="profit">Profit</option>
+                {breakdownView === 'margin' && (
+                <>
+                    <select value={marginRange} onChange={(e) => setMarginRange(e.target.value as any)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm">
+                        <option value="all">All Time</option>
+                        <option value="this_month">This Month</option>
+                        <option value="last_month">Last Month</option>
+                        <option value="this_quarter">This Quarter</option>
                     </select>
+                    <select value={marginCreator} onChange={(e) => setMarginCreator(e.target.value)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm max-w-[130px]">
+                        <option value="">All Creators</option>
+                        {marginFilterOptions.creators.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select value={marginCategory} onChange={(e) => setMarginCategory(e.target.value)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm max-w-[120px]">
+                        <option value="">All Categories</option>
+                        {marginFilterOptions.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select value={marginTheme} onChange={(e) => setMarginTheme(e.target.value)} className="bg-white border border-slate-300 text-slate-700 py-1.5 px-2 rounded-md text-xs shadow-sm max-w-[130px]">
+                        <option value="">All Themes</option>
+                        {marginFilterOptions.themes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                </>
                 )}
             </div>
         </div>
         
+        {breakdownView === 'margin' ? (
+        <div className="space-y-4 flex-1">
+            {/* Chart 1: Daily Bars + Cumulative Lines */}
+            <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1">Daily Spend & Margins + Cumulative (right axis)</p>
+                <div style={{height: 340}}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={marginChartData} margin={{ top: 10, right: 60, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="timestamp" type="number" domain={['auto','auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={11} stroke="#94a3b8" />
+                        <YAxis yAxisId="left" fontSize={11} stroke="#94a3b8" tickFormatter={(v: number) => `$${Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v.toFixed(0)}`} />
+                        <YAxis yAxisId="right" orientation="right" fontSize={11} stroke="#94a3b8" tickFormatter={(v: number) => `$${Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v.toFixed(0)}`} />
+                        <Tooltip content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0]?.payload;
+                            if (!d) return null;
+                            const fmt = (v: number) => '$' + v.toLocaleString(undefined, {maximumFractionDigits:0});
+                            return (<div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs space-y-1">
+                                <p className="font-semibold text-slate-800">{d.dateStr}</p>
+                                <p className="text-rose-500">Ad Spend: {fmt(d.spend)}</p>
+                                <p className="text-green-600">Total Margin (50%): {fmt(d.totalMargin)}</p>
+                                <p className="text-purple-600">AdMee Margin: {fmt(d.admeeMargin)}</p>
+                                <hr className="border-slate-100" />
+                                <p className="text-green-700">Cum Total Margin: {fmt(d.cumTotalMargin)}</p>
+                                <p className="text-purple-700">Cum AdMee Margin: {fmt(d.cumAdmeeMargin)}</p>
+                                <p className="text-slate-500">Cum Ad Spend: {fmt(d.cumSpend)}</p>
+                            </div>);
+                        }} />
+                        <Legend wrapperStyle={{fontSize: '10px', paddingTop: '8px'}} />
+                        <ReferenceLine yAxisId="left" y={0} stroke="#94a3b8" strokeDasharray="2 2" />
+                        <Bar yAxisId="left" dataKey="spend" fill="#f43f5e" name="Daily Spend" opacity={0.4} />
+                        <Bar yAxisId="left" dataKey="totalMargin" fill="#10b981" name="Total Margin (50%)" opacity={0.7} />
+                        <Bar yAxisId="left" dataKey="admeeMargin" fill="#8b5cf6" name="AdMee Margin" opacity={0.8} />
+                        <Line yAxisId="right" type="monotone" dataKey="cumSpend" stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="4 2" name="Cum Spend" dot={false} />
+                        <Line yAxisId="right" type="monotone" dataKey="cumTotalMargin" stroke="#10b981" strokeWidth={2} name="Cum Total Margin" dot={false} />
+                        <Line yAxisId="right" type="monotone" dataKey="cumAdmeeMargin" stroke="#8b5cf6" strokeWidth={2} name="Cum AdMee Margin" dot={false} />
+                    </ComposedChart>
+                </ResponsiveContainer>
+                </div>
+            </div>
+            {/* Chart 2: Margin ROI ratio lines */}
+            <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1">Cumulative Margin / Cumulative Spend (efficiency over time)</p>
+                <div style={{height: 220}}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={marginChartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="timestamp" type="number" domain={['auto','auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={11} stroke="#94a3b8" />
+                        <YAxis fontSize={11} stroke="#94a3b8" tickFormatter={(v: number) => `${(v*100).toFixed(0)}%`} />
+                        <Tooltip content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0]?.payload;
+                            if (!d) return null;
+                            return (<div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
+                                <p className="font-semibold text-slate-800 mb-1">{d.dateStr}</p>
+                                <p className="text-green-600">Total Margin / Spend: {(d.totalRoi*100).toFixed(1)}%</p>
+                                <p className="text-purple-600">AdMee Margin / Spend: {(d.admeeRoi*100).toFixed(1)}%</p>
+                            </div>);
+                        }} />
+                        <Legend wrapperStyle={{fontSize: '10px', paddingTop: '8px'}} />
+                        <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="2 2" />
+                        <Line type="monotone" dataKey="totalRoi" stroke="#10b981" strokeWidth={2.5} name="Total Margin / Spend" dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="admeeRoi" stroke="#8b5cf6" strokeWidth={2.5} name="AdMee Margin / Spend" dot={{ r: 2 }} />
+                    </ComposedChart>
+                </ResponsiveContainer>
+                </div>
+            </div>
+            {/* Summary KPIs */}
+            {marginChartData.length > 0 && (() => {
+                const last = marginChartData[marginChartData.length - 1];
+                const fmt = (v: number) => v >= 1000 ? `$${(v/1000).toFixed(1)}K` : `$${v.toFixed(0)}`;
+                return (
+                <div className="grid grid-cols-6 gap-3 pt-2">
+                    <div className="text-center p-2 bg-rose-50 rounded-lg"><p className="text-[10px] text-rose-500 font-medium">Total Spend</p><p className="text-sm font-bold text-rose-700">{fmt(last.cumSpend)}</p></div>
+                    <div className="text-center p-2 bg-green-50 rounded-lg"><p className="text-[10px] text-green-500 font-medium">Total Margin (50%)</p><p className="text-sm font-bold text-green-700">{fmt(last.cumTotalMargin)}</p></div>
+                    <div className="text-center p-2 bg-purple-50 rounded-lg"><p className="text-[10px] text-purple-500 font-medium">AdMee Margin</p><p className="text-sm font-bold text-purple-700">{fmt(last.cumAdmeeMargin)}</p></div>
+                    <div className="text-center p-2 bg-green-50 rounded-lg"><p className="text-[10px] text-green-500 font-medium">Total / Spend</p><p className="text-sm font-bold text-green-700">{(last.totalRoi*100).toFixed(1)}%</p></div>
+                    <div className="text-center p-2 bg-purple-50 rounded-lg"><p className="text-[10px] text-purple-500 font-medium">AdMee / Spend</p><p className="text-sm font-bold text-purple-700">{(last.admeeRoi*100).toFixed(1)}%</p></div>
+                    <div className="text-center p-2 bg-slate-50 rounded-lg"><p className="text-[10px] text-slate-500 font-medium">AdMee Share</p><p className="text-sm font-bold text-slate-700">{last.cumTotalMargin !== 0 ? ((last.cumAdmeeMargin / last.cumTotalMargin)*100).toFixed(0) : 0}%</p></div>
+                </div>);
+            })()}
+        </div>
+        ) : (
         <div className="flex-1 min-h-0 relative">
             <ResponsiveContainer width="100%" height="100%">
-                {breakdownView === 'multi-metric' ? (
-                    <ComposedChart data={multiMetricData} margin={{ top: 10, right: 60, left: 10, bottom: 0 }}>
+                {compMetric === 'roi' ? (
+                    <LineChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis 
-                            dataKey="timestamp" 
-                            type="number" 
-                            domain={['auto', 'auto']} 
-                            tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} 
-                            fontSize={12} 
-                            stroke="#94a3b8" 
-                        />
-                        <YAxis 
-                            yAxisId="left"
-                            fontSize={12} 
-                            stroke="#94a3b8"
-                            tickFormatter={(v: number) => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v.toFixed(0)}`}
-                        />
-                        <YAxis 
-                            yAxisId="right"
-                            orientation="right"
-                            fontSize={12} 
-                            stroke="#94a3b8"
-                            tickFormatter={(v: number) => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v.toFixed(0)}`}
-                        />
-                        <Tooltip
-                            content={({ active, payload, label }) => {
-                                if (!active || !payload?.length) return null;
-                                const d = payload[0]?.payload;
-                                if (!d) return null;
-                                return (
-                                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
-                                        <p className="font-semibold text-slate-800 mb-2">{d.dateStr}</p>
-                                        {multiMetricView !== 'bonus' && <p className="text-rose-600">Spend: ${d.spend.toLocaleString(undefined, {maximumFractionDigits:0})}</p>}
-                                        {multiMetricView !== 'bonus' && <p className="text-blue-600">Commission: ${d.commission.toLocaleString(undefined, {maximumFractionDigits:0})}</p>}
-                                        {multiMetricView !== 'commission' && <p className="text-amber-600">Bonus: ${d.bonus.toLocaleString(undefined, {maximumFractionDigits:0})}</p>}
-                                        <hr className="my-1 border-slate-100" />
-                                        <p className={`font-semibold ${d.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>Profit: ${d.profit.toLocaleString(undefined, {maximumFractionDigits:0})}</p>
-                                        <p className={`font-semibold ${d.margin >= 0 ? 'text-purple-600' : 'text-red-500'}`}>Margin: ${d.margin.toLocaleString(undefined, {maximumFractionDigits:0})}</p>
-                                        <p className="text-pink-600">Cumulative: ${d.cumulativeMargin.toLocaleString(undefined, {maximumFractionDigits:0})}</p>
-                                    </div>
-                                );
-                            }}
-                        />
-                        <Legend wrapperStyle={{fontSize: '11px', paddingTop: '10px'}} />
-                        <ReferenceLine yAxisId="left" y={0} stroke="#94a3b8" strokeDasharray="2 2" />
-                        {multiMetricView !== 'bonus' && <Bar yAxisId="left" dataKey="spend" fill="#f43f5e" name="Spend" opacity={0.5} />}
-                        {multiMetricView !== 'bonus' && <Bar yAxisId="left" dataKey="commission" fill="#3b82f6" name="Commission" opacity={0.6} />}
-                        {multiMetricView !== 'commission' && <Bar yAxisId="left" dataKey="bonus" fill="#f59e0b" name="Bonus" opacity={0.7} />}
-                        <Bar yAxisId="left" dataKey="margin" fill="#8b5cf6" name="Daily Margin" opacity={0.8} />
-                        <Line yAxisId="right" type="monotone" dataKey="cumulativeMargin" stroke="#ec4899" strokeWidth={2.5} name="Cumulative Margin" dot={{ r: 2 }} />
-                    </ComposedChart>
-                ) : breakdownView === 'trend' ? (
-                    compMetric === 'roi' ? (
-                        <LineChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
-                            <YAxis fontSize={12} stroke="#94a3b8" />
-                            <Tooltip content={<CustomTooltipTrend />} />
-                            <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
-                            <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="3 3" />
-                            {trendData.keys.map((key, index) => (
-                                <Line 
-                                    key={key}
-                                    type="monotone" 
-                                    dataKey={key} 
-                                    stroke={getColorForEntity(key, allEntitiesSorted)} 
-                                    strokeWidth={focusEntity === key ? 3 : 2}
-                                    dot={focusEntity === key}
-                                    activeDot={{ r: 6 }}
-                                    strokeOpacity={focusEntity && focusEntity !== key ? 0.3 : 1}
-                                />
-                            ))}
-                        </LineChart>
-                    ) : (
-                        <BarChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
-                            <YAxis fontSize={12} stroke="#94a3b8" />
-                            <Tooltip content={<CustomTooltipTrend />} />
-                            <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
-                            {trendData.keys.map((key, index) => (
-                                <Bar 
-                                    key={key}
-                                    dataKey={key} 
-                                    stackId={focusEntity ? undefined : "a"}
-                                    fill={getColorForEntity(key, allEntitiesSorted)} 
-                                    fillOpacity={focusEntity && focusEntity !== key ? 0.3 : 1}
-                                />
-                            ))}
-                        </BarChart>
-                    )
-                ) : (
-                    <PieChart>
-                        <Pie data={distributionData} cx="50%" cy="50%" labelLine={false} label={renderCustomizedLabel} outerRadius={130} fill="#8884d8" dataKey="value" onClick={handlePieClick} className="cursor-pointer focus:outline-none">
-                            {distributionData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={getColorForEntity(entry.name, allEntitiesSorted)} className="hover:opacity-80 transition-opacity" />
-                            ))}
-                        </Pie>
+                        <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
+                        <YAxis fontSize={12} stroke="#94a3b8" />
                         <Tooltip content={<CustomTooltipTrend />} />
-                        <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize: '12px'}} />
-                    </PieChart>
+                        <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
+                        <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="3 3" />
+                        {trendData.keys.map((key) => (
+                            <Line key={key} type="monotone" dataKey={key} stroke={getColorForEntity(key, allEntitiesSorted)} strokeWidth={focusEntity === key ? 3 : 2} dot={focusEntity === key} activeDot={{ r: 6 }} strokeOpacity={focusEntity && focusEntity !== key ? 0.3 : 1} />
+                        ))}
+                    </LineChart>
+                ) : (
+                    <BarChart data={trendData.data} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="timestamp" type="number" domain={['auto', 'auto']} tickFormatter={(u) => new Date(u).toLocaleDateString(undefined, {month:'short', day:'numeric'})} fontSize={12} stroke="#94a3b8" />
+                        <YAxis fontSize={12} stroke="#94a3b8" />
+                        <Tooltip content={<CustomTooltipTrend />} />
+                        <Legend wrapperStyle={{fontSize: '12px', paddingTop: '10px'}} />
+                        {trendData.keys.map((key) => (
+                            <Bar key={key} dataKey={key} stackId={focusEntity ? undefined : "a"} fill={getColorForEntity(key, allEntitiesSorted)} fillOpacity={focusEntity && focusEntity !== key ? 0.3 : 1} />
+                        ))}
+                    </BarChart>
                 )}
             </ResponsiveContainer>
         </div>
+        )}
       </div>
 
       {/* 3. Latest Daily Snapshot & Budget Matrix */}
@@ -1835,14 +1791,24 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                 {deepDiveSearch && <span className="ml-2 text-slate-400">• "{deepDiveSearch}"</span>}
                 {deepDiveStatusFilter !== 'all' && <span className="ml-2 text-slate-400">• {deepDiveStatusFilter === 'active' ? 'Active' : 'Off'}</span>}
             </span>
-            {(deepDiveSearch || deepDiveStatusFilter !== 'all') && (
-                <button 
-                    onClick={() => { setDeepDiveSearch(''); setDeepDiveStatusFilter('all'); }}
-                    className="text-xs text-slate-500 hover:text-indigo-600 flex items-center gap-1"
-                >
-                    <FilterX className="w-3 h-3" /> Clear filters
-                </button>
-            )}
+            <div className="flex items-center gap-2">
+                {filterListBySelected && selectedPosts.length > 0 && (
+                    <button 
+                        onClick={() => setFilterListBySelected(false)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium"
+                    >
+                        <FilterX className="w-3 h-3" /> Show All Posts
+                    </button>
+                )}
+                {(deepDiveSearch || deepDiveStatusFilter !== 'all') && (
+                    <button 
+                        onClick={() => { setDeepDiveSearch(''); setDeepDiveStatusFilter('all'); }}
+                        className="text-xs text-slate-500 hover:text-indigo-600 flex items-center gap-1"
+                    >
+                        <FilterX className="w-3 h-3" /> Clear filters
+                    </button>
+                )}
+            </div>
         </div>
         <div className="overflow-x-auto bg-slate-50/20 max-h-[600px] overflow-y-auto">
             <div className="inline-block min-w-full align-middle">
@@ -1884,6 +1850,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         <tbody className="bg-white divide-y divide-slate-100">
                             {postsInSegmentAggregated
                                 .filter(post => {
+                                    // Selection filter — when user clicked strategy card / scatter dot
+                                    if (filterListBySelected && selectedPosts.length > 0 && !selectedPosts.includes(post.contentName)) return false;
                                     // Search filter
                                     if (deepDiveSearch.trim()) {
                                         const searchLower = deepDiveSearch.toLowerCase();

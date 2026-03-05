@@ -706,9 +706,8 @@ export const calculateCreatorSettlements = (
 
       let bonusDiffMonthly = 0;
       if (bonusCal && bonusCal.tiers.length > 0) {
-        const projectedGmv = calculateProjectedGmv(adData, creatorName, daysRemaining);
-        const projectedTotalRevenue = bonusCal.totalShippedRevenue + projectedGmv;
-        projectedTotalTierBonus = calculateTierBonus(projectedTotalRevenue, bonusCal.tiers);
+        // Use current Sales (up to date) directly — no projection
+        projectedTotalTierBonus = calculateTierBonus(bonusCal.totalShippedRevenue, bonusCal.tiers);
         organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
         bonusDiffMonthly = projectedTotalTierBonus - organicTierBonus;
       }
