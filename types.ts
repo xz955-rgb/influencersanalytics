@@ -111,6 +111,7 @@ export interface CreatorSettlement {
   organicTierBonus: number;       // Bonus based on organic shipped revenue
   marginShare: number;            // e.g. 0.35 for 35% — from Monthly Earning Cal, or default 0.5
   isActualData: boolean;          // true if Commission/Bonus came from Monthly Earning Cal
+  bonusMonthlyBreakdown?: { month: string; bonus: number; isEstimated: boolean }[];
 }
 
 // Overall earnings summary

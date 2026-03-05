@@ -324,7 +324,18 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-700">{formatFullCurrency(settlement.adSpend)}</td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-blue-600">{formatFullCurrency(settlement.commissionEarning)}</td>
-                  <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600" title={`Sales Tier Bonus: ${formatFullCurrency(settlement.totalTierBonus)} - Organic Tier Bonus: ${formatFullCurrency(settlement.organicTierBonus)}`}>{formatFullCurrency(settlement.bonusDiffWeekly)}<div className="text-[9px] text-slate-400">{formatCurrency(settlement.totalTierBonus)} - {formatCurrency(settlement.organicTierBonus)}</div></td>
+                  <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">
+                    {formatFullCurrency(settlement.bonusDiffWeekly)}
+                    {settlement.bonusMonthlyBreakdown && settlement.bonusMonthlyBreakdown.length > 0 ? (
+                      <div className="text-[9px] text-slate-400">{settlement.bonusMonthlyBreakdown.map((b, i) => {
+                        const [,m] = b.month.split('-');
+                        const label = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)];
+                        return `${i > 0 ? ' + ' : ''}${label}${b.isEstimated ? '(est)' : ''}: ${formatCurrency(b.bonus)}`;
+                      }).join('')}</div>
+                    ) : (
+                      <div className="text-[9px] text-slate-400">{formatCurrency(settlement.totalTierBonus)} − {formatCurrency(settlement.organicTierBonus)}</div>
+                    )}
+                  </td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-emerald-600 font-semibold">{formatFullCurrency(totalEarning)}</td>
                   <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold ${settlement.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatFullCurrency(settlement.profit)}</td>
                   <td className="px-3 py-3 whitespace-nowrap text-center text-xs font-medium text-purple-600">{Math.round(settlement.marginShare * 100)}%</td>

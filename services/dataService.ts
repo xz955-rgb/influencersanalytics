@@ -728,6 +728,7 @@ export const calculateCreatorSettlements = (
     let isActual = false;
     let projectedTotalTierBonus = 0;
     let organicTierBonus = 0;
+    let bonusMonthlyBreakdown: { month: string; bonus: number; isEstimated: boolean }[] | undefined;
 
     if (spansMultipleMonths && !isMonthlyPeriod) {
       // ---- MULTI-MONTH path: aggregate per month ----
@@ -736,6 +737,7 @@ export const calculateCreatorSettlements = (
       let totalProjTier = 0;
       let totalOrgTier = 0;
       let anyActual = false;
+      bonusMonthlyBreakdown = [];
 
       for (const month of monthsInRange) {
         const actualRow = monthlyEarningData.find(d => d.creatorName === creatorName && d.month === month);
@@ -743,26 +745,25 @@ export const calculateCreatorSettlements = (
           anyActual = true;
           totalCommission += actualRow.commission;
           totalBonus += actualRow.bonus;
-          // Tier breakdown for display
+          bonusMonthlyBreakdown.push({ month, bonus: actualRow.bonus, isEstimated: false });
           const bc = bonusCalByKey.get(`${creatorName}|${month}`);
           if (bc && bc.tiers.length > 0) {
             totalProjTier += calculateTierBonus(bc.totalShippedRevenue, bc.tiers);
             totalOrgTier += calculateTierBonus(bc.shippedRevOrganic, bc.tiers);
           }
         } else {
-          // Estimated month — only fall back to latest data for current month
           const isCurrentMonth = month === currentMonthStr;
           const est = estimateMonthBonus(creatorName, month, isCurrentMonth);
           totalBonus += est.bonus;
           totalProjTier += est.projTier;
           totalOrgTier += est.orgTier;
+          if (est.bonus !== 0) {
+            bonusMonthlyBreakdown.push({ month, bonus: est.bonus, isEstimated: true });
+          }
         }
       }
 
-      // Commission: use actual sum for past months + ad data for current month
-      // If we had any actual months, add ad data only for the non-actual months
       if (anyActual) {
-        // Add ad data commission for months without actual data
         filteredData.forEach(item => {
           if (item.creatorName !== creatorName) return;
           const d = new Date(item.date);
@@ -831,6 +832,7 @@ export const calculateCreatorSettlements = (
       organicTierBonus,
       marginShare: mShare,
       isActualData: isActual,
+      bonusMonthlyBreakdown,
     });
   });
 
