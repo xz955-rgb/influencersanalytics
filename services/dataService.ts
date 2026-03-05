@@ -711,9 +711,22 @@ export const calculateCreatorSettlements = (
 
       let bonusDiffMonthly = 0;
       if (bonusCal && bonusCal.tiers.length > 0) {
-        // Use current Sales (up to date) directly — no projection
-        projectedTotalTierBonus = calculateTierBonus(bonusCal.totalShippedRevenue, bonusCal.tiers);
-        organicTierBonus = calculateTierBonus(bonusCal.shippedRevOrganic, bonusCal.tiers);
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const isCurrentMonthData = bonusCal.dataMonth === currentMonth;
+
+        let salesForBonus = bonusCal.totalShippedRevenue;
+        let organicForBonus = bonusCal.shippedRevOrganic;
+
+        if (isCurrentMonthData) {
+          // Project to end of month: daily average × days in month
+          const daysSoFar = Math.max(1, now.getDate());
+          const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+          salesForBonus = (bonusCal.totalShippedRevenue / daysSoFar) * totalDaysInMonth;
+          organicForBonus = (bonusCal.shippedRevOrganic / daysSoFar) * totalDaysInMonth;
+        }
+
+        projectedTotalTierBonus = calculateTierBonus(salesForBonus, bonusCal.tiers);
+        organicTierBonus = calculateTierBonus(organicForBonus, bonusCal.tiers);
         bonusDiffMonthly = projectedTotalTierBonus - organicTierBonus;
       }
       bonusAmount = isMonthlyPeriod ? bonusDiffMonthly : bonusDiffMonthly * periodRatio;

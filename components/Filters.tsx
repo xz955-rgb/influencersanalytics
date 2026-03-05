@@ -238,17 +238,19 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
               const value = e.target.value;
               if (value === 'custom') return;
               
-              const today = new Date();
+              const _now = new Date();
+              const today = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
               let start: Date, end: Date;
               
               switch(value) {
                 case 'today':
-                  start = end = new Date(today);
+                  start = new Date(today);
+                  end = new Date(today);
                   break;
                 case 'yesterday':
-                  start = end = new Date(today);
+                  start = new Date(today);
                   start.setDate(start.getDate() - 1);
-                  end.setDate(end.getDate() - 1);
+                  end = new Date(start);
                   break;
                 case 'last7':
                   end = new Date(today);
@@ -284,10 +286,11 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
                   return;
               }
               
+              const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
               setFilters(prev => ({
                 ...prev,
-                startDate: start.toISOString().split('T')[0],
-                endDate: end.toISOString().split('T')[0]
+                startDate: fmtDate(start),
+                endDate: fmtDate(end)
               }));
             }}
             className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 bg-white focus:ring-indigo-500 focus:border-indigo-500 appearance-none"
