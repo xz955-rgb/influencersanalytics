@@ -720,7 +720,7 @@ export const calculateCreatorSettlements = (
 
   allCreators.forEach(creatorName => {
     const adInfo = creatorAdMap.get(creatorName) || { spend: 0, earning: 0 };
-    const mShare = marginShareMap.get(creatorName) ?? 0.5;
+    const mShare = marginShareMap.get(creatorName) ?? 0.35;
     const adSpend = adInfo.spend;
 
     let commissionEarning: number;

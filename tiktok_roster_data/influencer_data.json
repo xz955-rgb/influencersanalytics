@@ -1,0 +1,273 @@
+{
+  "elements": [
+    {
+      "index": 1,
+      "text": "A-LIST ME\n\nHOME\n\nMEET THE TEAM\n\nTALENT APPLICATION\n\nFOR BRANDS\n\nBRAND INQUIRY",
+      "images": [
+        {
+          "src": "https://static.wixstatic.com/media/38f423_0f9a55b2779f47a18d82c36acc1d8a81~mv2.png/v1/fill/w_47,h_47,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/A-List%20Me%20Logo%20White.png",
+          "alt": "A-List Me Logo White.png"
+        }
+      ],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/",
+          "text": "HOME"
+        },
+        {
+          "href": "https://www.a-listme.com/meet-the-team",
+          "text": "MEET THE TEAM"
+        },
+        {
+          "href": "https://www.a-listme.com/influencer-application",
+          "text": "TALENT APPLICATION"
+        },
+        {
+          "href": "https://www.a-listme.com/brand-services",
+          "text": "FOR BRANDS"
+        },
+        {
+          "href": "https://www.a-listme.com/brand-contact",
+          "text": "BRAND INQUIRY"
+        }
+      ],
+      "html": "<div data-mesh-id=\"SITE_HEADERinlineContent\" data-testid=\"inline-content\" class=\"\"><div data-mesh-id=\"SITE_HEADERinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><div id=\"comp-kk7eygrj\" class=\"MazNVa comp-kk7eygrj wixui-image\"><div data-testid=\"linkElement\" class=\"j7pOnl\"><img fetchpriority=\"high\" sizes=\"47px\" srcset=\"https://static.wixstatic.com/media/38f423_0f9a55b2779f47a18d82c36acc1d8a81~mv2.png/v1/fill/w_47,h_47,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/A-List%20Me"
+    },
+    {
+      "index": 2,
+      "text": "A-LIST ME\n\nHOME\n\nMEET THE TEAM\n\nTALENT APPLICATION\n\nFOR BRANDS\n\nBRAND INQUIRY",
+      "images": [
+        {
+          "src": "https://static.wixstatic.com/media/38f423_0f9a55b2779f47a18d82c36acc1d8a81~mv2.png/v1/fill/w_47,h_47,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/A-List%20Me%20Logo%20White.png",
+          "alt": "A-List Me Logo White.png"
+        }
+      ],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/",
+          "text": "HOME"
+        },
+        {
+          "href": "https://www.a-listme.com/meet-the-team",
+          "text": "MEET THE TEAM"
+        },
+        {
+          "href": "https://www.a-listme.com/influencer-application",
+          "text": "TALENT APPLICATION"
+        },
+        {
+          "href": "https://www.a-listme.com/brand-services",
+          "text": "FOR BRANDS"
+        },
+        {
+          "href": "https://www.a-listme.com/brand-contact",
+          "text": "BRAND INQUIRY"
+        }
+      ],
+      "html": "<div data-mesh-id=\"SITE_HEADERinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><div id=\"comp-kk7eygrj\" class=\"MazNVa comp-kk7eygrj wixui-image\"><div data-testid=\"linkElement\" class=\"j7pOnl\"><img fetchpriority=\"high\" sizes=\"47px\" srcset=\"https://static.wixstatic.com/media/38f423_0f9a55b2779f47a18d82c36acc1d8a81~mv2.png/v1/fill/w_47,h_47,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/A-List%20Me%20Logo%20White.png 1x, https://static.wixstatic.com/media/38f423_0f9a55b2779f47a18"
+    },
+    {
+      "index": 3,
+      "text": "TIKTOK ROSTER\nTIKTOK ROSTER\nINSTAGRAM ROSTER\nYOUTUBE ROSTER",
+      "images": [],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/tiktokroster",
+          "text": "TIKTOK ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/roster",
+          "text": "INSTAGRAM ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/youtuberoster",
+          "text": "YOUTUBE ROSTER"
+        }
+      ],
+      "html": "<div data-mesh-id=\"ContainerheluqinlineContent\" data-testid=\"inline-content\" class=\"\"><div data-mesh-id=\"ContainerheluqinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><section id=\"comp-lgh0l8ma\" tabindex=\"-1\" class=\"Oqnisf comp-lgh0l8ma wixui-section\" data-block-level-container=\"ClassicSection\"><div id=\"bgLayers_comp-lgh0l8ma\" data-hook=\"bgLayers\" data-motion-part=\"BG_LAYER comp-lgh0l8ma\" class=\"MW5IWV\"><div data-testid=\"colorUnderlay\" class=\"LWbAav Kv1aVt\"></div><div id=\"bgMed"
+    },
+    {
+      "index": 4,
+      "text": "TIKTOK ROSTER\nTIKTOK ROSTER\nINSTAGRAM ROSTER\nYOUTUBE ROSTER",
+      "images": [],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/tiktokroster",
+          "text": "TIKTOK ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/roster",
+          "text": "INSTAGRAM ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/youtuberoster",
+          "text": "YOUTUBE ROSTER"
+        }
+      ],
+      "html": "<div data-mesh-id=\"ContainerheluqinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><section id=\"comp-lgh0l8ma\" tabindex=\"-1\" class=\"Oqnisf comp-lgh0l8ma wixui-section\" data-block-level-container=\"ClassicSection\"><div id=\"bgLayers_comp-lgh0l8ma\" data-hook=\"bgLayers\" data-motion-part=\"BG_LAYER comp-lgh0l8ma\" class=\"MW5IWV\"><div data-testid=\"colorUnderlay\" class=\"LWbAav Kv1aVt\"></div><div id=\"bgMedia_comp-lgh0l8ma\" data-motion-part=\"BG_MEDIA comp-lgh0l8ma\" class=\"VgO9Yg\"></div></div"
+    },
+    {
+      "index": 5,
+      "text": "TIKTOK ROSTER\nTIKTOK ROSTER\nINSTAGRAM ROSTER\nYOUTUBE ROSTER",
+      "images": [],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/tiktokroster",
+          "text": "TIKTOK ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/roster",
+          "text": "INSTAGRAM ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/youtuberoster",
+          "text": "YOUTUBE ROSTER"
+        }
+      ],
+      "html": "<div data-mesh-id=\"comp-lgh0l8mainlineContent\" data-testid=\"inline-content\" class=\"\"><div data-mesh-id=\"comp-lgh0l8mainlineContent-gridContainer\" data-testid=\"mesh-container-content\"><section id=\"comp-l6xxhjbf\" class=\"comp-l6xxhjbf CohWsy wixui-column-strip\"><div id=\"bgLayers_comp-l6xxhjbf\" data-hook=\"bgLayers\" data-motion-part=\"BG_LAYER comp-l6xxhjbf\" class=\"if7Vw2\"><div data-testid=\"colorUnderlay\" class=\"tcElKx i1tH8h\"></div><div id=\"bgMedia_comp-l6xxhjbf\" data-motion-part=\"BG_MEDIA comp-l6xxh"
+    },
+    {
+      "index": 6,
+      "text": "TIKTOK ROSTER\nTIKTOK ROSTER\nINSTAGRAM ROSTER\nYOUTUBE ROSTER",
+      "images": [],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/tiktokroster",
+          "text": "TIKTOK ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/roster",
+          "text": "INSTAGRAM ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/youtuberoster",
+          "text": "YOUTUBE ROSTER"
+        }
+      ],
+      "html": "<div data-mesh-id=\"comp-lgh0l8mainlineContent-gridContainer\" data-testid=\"mesh-container-content\"><section id=\"comp-l6xxhjbf\" class=\"comp-l6xxhjbf CohWsy wixui-column-strip\"><div id=\"bgLayers_comp-l6xxhjbf\" data-hook=\"bgLayers\" data-motion-part=\"BG_LAYER comp-l6xxhjbf\" class=\"if7Vw2\"><div data-testid=\"colorUnderlay\" class=\"tcElKx i1tH8h\"></div><div id=\"bgMedia_comp-l6xxhjbf\" data-motion-part=\"BG_MEDIA comp-l6xxhjbf\" class=\"wG8dni\"></div></div><div data-testid=\"columns\" class=\"V5AUxf\"><div id=\"co"
+    },
+    {
+      "index": 7,
+      "text": "TIKTOK ROSTER\nTIKTOK ROSTER\nINSTAGRAM ROSTER\nYOUTUBE ROSTER",
+      "images": [],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/tiktokroster",
+          "text": "TIKTOK ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/roster",
+          "text": "INSTAGRAM ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/youtuberoster",
+          "text": "YOUTUBE ROSTER"
+        }
+      ],
+      "html": "<div data-mesh-id=\"comp-l6xxhjbiinlineContent\" data-testid=\"inline-content\" class=\"\"><div data-mesh-id=\"comp-l6xxhjbiinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><div id=\"comp-l6xxhjbl2\" class=\"ku3DBC zQ9jDz qvSjx3 Vq6kJx comp-l6xxhjbl2 wixui-rich-text\" data-testid=\"richTextElement\" data-motion-enter=\"done\"><h1 class=\"font_0 wixui-rich-text__text\" style=\"text-align:center; font-size:38px;\">TIKTOK ROSTER</h1></div><div class=\"comp-l6xxhjbp FubTgk\" id=\"comp-l6xxhjbp\" aria-disa"
+    },
+    {
+      "index": 8,
+      "text": "TIKTOK ROSTER\nTIKTOK ROSTER\nINSTAGRAM ROSTER\nYOUTUBE ROSTER",
+      "images": [],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/tiktokroster",
+          "text": "TIKTOK ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/roster",
+          "text": "INSTAGRAM ROSTER"
+        },
+        {
+          "href": "https://www.a-listme.com/youtuberoster",
+          "text": "YOUTUBE ROSTER"
+        }
+      ],
+      "html": "<div data-mesh-id=\"comp-l6xxhjbiinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><div id=\"comp-l6xxhjbl2\" class=\"ku3DBC zQ9jDz qvSjx3 Vq6kJx comp-l6xxhjbl2 wixui-rich-text\" data-testid=\"richTextElement\" data-motion-enter=\"done\"><h1 class=\"font_0 wixui-rich-text__text\" style=\"text-align:center; font-size:38px;\">TIKTOK ROSTER</h1></div><div class=\"comp-l6xxhjbp FubTgk\" id=\"comp-l6xxhjbp\" aria-disabled=\"false\" data-motion-enter=\"done\"><a data-testid=\"linkElement\" href=\"https://www."
+    },
+    {
+      "index": 9,
+      "text": "A-List, B-Kind\n\ninfo@a-listme.com\n\n(978) 729-0059\n\n© 2021 by A-List Me\n\nTerms & Conditions\n\nA-List Me\n\n222 Post Rd Suite 8D\n\nWesterly, RI 02891",
+      "images": [
+        {
+          "src": "https://static.wixstatic.com/media/01c3aff52f2a4dffa526d7a9843d46ea.png/v1/fill/w_49,h_49,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/01c3aff52f2a4dffa526d7a9843d46ea.png",
+          "alt": "Black Instagram Icon"
+        },
+        {
+          "src": "https://static.wixstatic.com/media/0fdef751204647a3bbd7eaa2827ed4f9.png/v1/fill/w_49,h_49,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/0fdef751204647a3bbd7eaa2827ed4f9.png",
+          "alt": "Black Facebook Icon"
+        }
+      ],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/b-kind",
+          "text": ""
+        },
+        {
+          "href": "https://www.a-listme.com/b-kind",
+          "text": "A-List, B-Kind"
+        },
+        {
+          "href": "mailto:info@a-listme.com",
+          "text": "info@a-listme.com"
+        },
+        {
+          "href": "https://www.instagram.com/alist_me/",
+          "text": ""
+        },
+        {
+          "href": "https://www.facebook.com/alistmeagency/",
+          "text": ""
+        },
+        {
+          "href": "https://www.a-listme.com/",
+          "text": "Terms & Conditions"
+        }
+      ],
+      "html": "<div data-mesh-id=\"SITE_FOOTERinlineContent\" data-testid=\"inline-content\" class=\"\"><div data-mesh-id=\"SITE_FOOTERinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><div id=\"comp-kz5rcc2f\" class=\"comp-kz5rcc2f wixui-vector-image\"><a data-testid=\"linkElement\" href=\"https://www.a-listme.com/b-kind\" target=\"_self\" class=\"aeyn4z\"><div data-testid=\"svgRoot-comp-kz5rcc2f\" class=\"VDJedC l4CAhn\"><svg preserveAspectRatio=\"xMidYMid meet\" data-bbox=\"50 39.5 100 121\" viewBox=\"50 39.5 100 121\" "
+    },
+    {
+      "index": 10,
+      "text": "A-List, B-Kind\n\ninfo@a-listme.com\n\n(978) 729-0059\n\n© 2021 by A-List Me\n\nTerms & Conditions\n\nA-List Me\n\n222 Post Rd Suite 8D\n\nWesterly, RI 02891",
+      "images": [
+        {
+          "src": "https://static.wixstatic.com/media/01c3aff52f2a4dffa526d7a9843d46ea.png/v1/fill/w_49,h_49,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/01c3aff52f2a4dffa526d7a9843d46ea.png",
+          "alt": "Black Instagram Icon"
+        },
+        {
+          "src": "https://static.wixstatic.com/media/0fdef751204647a3bbd7eaa2827ed4f9.png/v1/fill/w_49,h_49,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/0fdef751204647a3bbd7eaa2827ed4f9.png",
+          "alt": "Black Facebook Icon"
+        }
+      ],
+      "links": [
+        {
+          "href": "https://www.a-listme.com/b-kind",
+          "text": ""
+        },
+        {
+          "href": "https://www.a-listme.com/b-kind",
+          "text": "A-List, B-Kind"
+        },
+        {
+          "href": "mailto:info@a-listme.com",
+          "text": "info@a-listme.com"
+        },
+        {
+          "href": "https://www.instagram.com/alist_me/",
+          "text": ""
+        },
+        {
+          "href": "https://www.facebook.com/alistmeagency/",
+          "text": ""
+        },
+        {
+          "href": "https://www.a-listme.com/",
+          "text": "Terms & Conditions"
+        }
+      ],
+      "html": "<div data-mesh-id=\"SITE_FOOTERinlineContent-gridContainer\" data-testid=\"mesh-container-content\"><div id=\"comp-kz5rcc2f\" class=\"comp-kz5rcc2f wixui-vector-image\"><a data-testid=\"linkElement\" href=\"https://www.a-listme.com/b-kind\" target=\"_self\" class=\"aeyn4z\"><div data-testid=\"svgRoot-comp-kz5rcc2f\" class=\"VDJedC l4CAhn\"><svg preserveAspectRatio=\"xMidYMid meet\" data-bbox=\"50 39.5 100 121\" viewBox=\"50 39.5 100 121\" height=\"200\" width=\"200\" xmlns=\"http://www.w3.org/2000/svg\" data-type=\"color\" role="
+    }
+  ],
+  "rawText": "Skip to Main Content\nA-LIST ME\n\nHOME\n\nMEET THE TEAM\n\nTALENT APPLICATION\n\nFOR BRANDS\n\nBRAND INQUIRY\n\nTIKTOK ROSTER\nTIKTOK ROSTER\nINSTAGRAM ROSTER\nYOUTUBE ROSTER\n\nA-List, B-Kind\n\ninfo@a-listme.com\n\n(978) 729-0059\n\n© 2021 by A-List Me\n\nTerms & Conditions\n\nA-List Me\n\n222 Post Rd Suite 8D\n\nWesterly, RI 02891"
+}

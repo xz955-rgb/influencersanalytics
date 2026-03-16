@@ -361,10 +361,15 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     });
 
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const daysSoFar = Math.max(1, now.getDate());
+    const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const bonusCalCurrent = new Map<string, number>();
     bonusCalData.filter(bc => bc.dataMonth === currentMonthStr).forEach(bc => {
       if (bc.tiers.length > 0) {
-        bonusCalCurrent.set(bc.creatorName, calculateTierBonus(bc.totalShippedRevenue, bc.tiers) - calculateTierBonus(bc.shippedRevOrganic, bc.tiers));
+        // Project Sales & Organic to end of month for estimated bonus
+        const projSales = (bc.totalShippedRevenue / daysSoFar) * totalDaysInMonth;
+        const projOrganic = (bc.shippedRevOrganic / daysSoFar) * totalDaysInMonth;
+        bonusCalCurrent.set(bc.creatorName, calculateTierBonus(projSales, bc.tiers) - calculateTierBonus(projOrganic, bc.tiers));
       }
     });
 
@@ -397,7 +402,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         // Total Margin: 50% of profit (non-creator share), absorb full loss
         totalMargin += profit > 0 ? 0.5 * profit : profit;
         // AdMee Margin: marginShare% of profit, absorb full loss
-        const ms = msMap.get(creator) ?? 0.5;
+        const ms = msMap.get(creator) ?? 0.35;
         admeeMargin += profit > 0 ? ms * profit : profit;
       });
 

@@ -35,10 +35,12 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
     }
   }, [availableMonths, selectedMonth]);
 
-  // Filter tier data by selected month
+  // Filter tier data by selected month, deduplicate by creator (keep last occurrence)
   const filteredTierData = useMemo(() => {
-    if (!selectedMonth) return tierData;
-    return tierData.filter(t => t.dataMonth === selectedMonth);
+    const source = selectedMonth ? tierData.filter(t => t.dataMonth === selectedMonth) : tierData;
+    const byCreator = new Map<string, typeof source[0]>();
+    source.forEach(t => byCreator.set(t.creatorName, t));
+    return Array.from(byCreator.values());
   }, [tierData, selectedMonth]);
 
   // Check if selected month is current month (for showing days remaining)
