@@ -24,6 +24,7 @@ interface OverviewProps {
   postLinks: Map<string, PostLinks>;
   bonusCalData: CreatorBonusCalData[];
   monthlyEarningData: MonthlyEarningRow[];
+  selectedMarketplaces: string[];
 }
 
 // 1. Consistent Color Palette
@@ -72,7 +73,8 @@ const formatDuration = (ms: number) => {
     return `${days} days`;
 };
 
-export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, postLinks, bonusCalData, monthlyEarningData }) => {
+export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, postLinks, bonusCalData, monthlyEarningData, selectedMarketplaces }) => {
+  const hideBonusTracker = selectedMarketplaces.length === 1 && selectedMarketplaces[0] === 'Walmart';
   // ----------------------------------------------------------------------
   // 1. KPI Calculations & Global Stats
   // ----------------------------------------------------------------------
@@ -1020,8 +1022,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         />
       </div>
 
-      {/* Tier Rewards Tracker - Always show, component handles empty state */}
-      <TierRewardsTracker tierData={tierData} adData={data} />
+      {!hideBonusTracker && <TierRewardsTracker tierData={tierData} adData={data} />}
 
       {/* Strategy Alerts Section - Compact */}
       {(strategyAlerts.length > 0 || contentInsights.length > 0) && (

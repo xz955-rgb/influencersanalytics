@@ -11,6 +11,7 @@ interface EarningsTabProps {
   adData: AdData[];
   bonusCalData: CreatorBonusCalData[];
   monthlyEarningData: MonthlyEarningRow[];
+  selectedMarketplaces: string[];
 }
 
 // Get date range for preset - aligned with Filters component
@@ -57,7 +58,7 @@ const formatDateInput = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, monthlyEarningData }) => {
+export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, monthlyEarningData, selectedMarketplaces }) => {
   const [timePreset, setTimePreset] = useState<TimeRangePreset>('this_month');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -65,8 +66,16 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [marketplaceFilter, setMarketplaceFilter] = useState<string>('all');
 
-  const marketplaces = useMemo(() => Array.from(new Set(adData.map(d => d.marketplace))).sort(), [adData]);
-  const filteredAdData = useMemo(() => marketplaceFilter === 'all' ? adData : adData.filter(d => d.marketplace === marketplaceFilter), [adData, marketplaceFilter]);
+  const globallyFilteredAdData = useMemo(
+    () => (selectedMarketplaces.length === 0 ? adData : adData.filter(d => selectedMarketplaces.includes(d.marketplace))),
+    [adData, selectedMarketplaces]
+  );
+  const marketplaces = useMemo(() => Array.from(new Set(globallyFilteredAdData.map(d => d.marketplace))).sort(), [globallyFilteredAdData]);
+  const filteredAdData = useMemo(
+    () => (marketplaceFilter === 'all' ? globallyFilteredAdData : globallyFilteredAdData.filter(d => d.marketplace === marketplaceFilter)),
+    [globallyFilteredAdData, marketplaceFilter]
+  );
+  const showBonus = useMemo(() => filteredAdData.some(d => d.marketplace === 'Amazon'), [filteredAdData]);
 
   const { startDate, endDate } = useMemo(() => {
     if (timePreset === 'custom' && customStartDate && customEndDate) {
@@ -112,7 +121,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
   const hasBonusCalDataForMonth = filteredBonusCalData.length > 0;
 
   // For monthly periods, we need either Bonus Cal data OR Monthly Earning Cal data
-  const requiresBonusCal = isMonthlyPeriod;
+  const requiresBonusCal = isMonthlyPeriod && showBonus;
   const hasValidData = requiresBonusCal ? hasBonusCalDataForMonth : true;
   const useBonusCalCommission = isMonthlyPeriod && hasBonusCalDataForMonth;
 
@@ -129,8 +138,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
         totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [],
       };
     }
-    return calculateCreatorSettlements(filteredAdData, bonusCalData, startDate, endDate, isMonthlyPeriod, monthlyEarningData);
-  }, [filteredAdData, bonusCalData, startDate, endDate, isMonthlyPeriod, hasValidData, hasActualMonthlyData, monthlyEarningData]);
+    return calculateCreatorSettlements(filteredAdData, showBonus ? bonusCalData : [], startDate, endDate, isMonthlyPeriod, showBonus ? monthlyEarningData : []);
+  }, [filteredAdData, bonusCalData, startDate, endDate, isMonthlyPeriod, hasValidData, hasActualMonthlyData, monthlyEarningData, showBonus]);
 
   const sortedSettlements = useMemo(() => {
     const sorted = [...earningsSummary.creatorSettlements];
@@ -232,7 +241,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
         </div>
       </div>
 
-      {!hasValidData && !hasActualMonthlyData && (
+      {!hasValidData && !hasActualMonthlyData && showBonus && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-amber-800 mb-2">Bonus Cal Data Not Available</h3>
@@ -279,10 +288,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
         </div>
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
           <p className="text-xs font-medium text-emerald-600 mb-2">Total Earning</p>
-          <p className="text-2xl font-bold text-emerald-700">{formatFullCurrency(earningsSummary.totalCommission + earningsSummary.totalBonusDiff)}</p>
+          <p className="text-2xl font-bold text-emerald-700">{formatFullCurrency(earningsSummary.totalCommission + (showBonus ? earningsSummary.totalBonusDiff : 0))}</p>
           <div className="mt-2 pt-2 border-t border-emerald-200 space-y-1">
             <div className="flex justify-between text-xs"><span className="text-slate-500">Commission</span><span className="font-medium text-blue-600">{formatFullCurrency(earningsSummary.totalCommission)}</span></div>
-            <div className="flex justify-between text-xs"><span className="text-slate-500">Bonus Diff</span><span className="font-medium text-amber-600">{formatFullCurrency(earningsSummary.totalBonusDiff)}</span></div>
+            {showBonus && <div className="flex justify-between text-xs"><span className="text-slate-500">Bonus Diff</span><span className="font-medium text-amber-600">{formatFullCurrency(earningsSummary.totalBonusDiff)}</span></div>}
           </div>
         </div>
         <div className={`p-4 rounded-xl ${earningsSummary.totalProfit >= 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
@@ -315,7 +324,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                 <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Creator</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('adSpend')}><div className="flex items-center justify-end gap-1">Ad Spend <ArrowUpDown className="w-3 h-3" /></div></th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('commissionEarning')}><div className="flex items-center justify-end gap-1">Commission <ArrowUpDown className="w-3 h-3" /></div></th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('bonusDiffWeekly')}><div className="flex items-center justify-end gap-1">Bonus Diff <ArrowUpDown className="w-3 h-3" /></div></th>
+                {showBonus && <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('bonusDiffWeekly')}><div className="flex items-center justify-end gap-1">Bonus Diff <ArrowUpDown className="w-3 h-3" /></div></th>}
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Earning</th>
                 <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-indigo-600" onClick={() => handleSort('profit')}><div className="flex items-center justify-end gap-1">Total Profit <ArrowUpDown className="w-3 h-3" /></div></th>
                 <th className="px-3 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Share</th>
@@ -325,7 +334,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
             </thead>
             <tbody className="bg-white divide-y divide-slate-100">
               {sortedSettlements.map((settlement) => {
-                const totalEarning = settlement.commissionEarning + settlement.bonusDiffWeekly;
+                const totalEarning = settlement.commissionEarning + (showBonus ? settlement.bonusDiffWeekly : 0);
                 return (
                 <tr key={settlement.creatorName} className="hover:bg-slate-50 transition-colors">
                   <td className="px-3 py-3 whitespace-nowrap">
@@ -336,7 +345,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-700">{formatFullCurrency(settlement.adSpend)}</td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-blue-600">{formatFullCurrency(settlement.commissionEarning)}</td>
-                  <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">
+                  {showBonus && <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">
                     {formatFullCurrency(settlement.bonusDiffWeekly)}
                     {settlement.bonusMonthlyBreakdown && settlement.bonusMonthlyBreakdown.length > 0 ? (
                       <div className="text-[9px] text-slate-400">{settlement.bonusMonthlyBreakdown.map((b, i) => {
@@ -347,7 +356,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                     ) : (
                       <div className="text-[9px] text-slate-400">{formatCurrency(settlement.totalTierBonus)} − {formatCurrency(settlement.organicTierBonus)}</div>
                     )}
-                  </td>
+                  </td>}
                   <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-emerald-600 font-semibold">{formatFullCurrency(totalEarning)}</td>
                   <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono font-bold ${settlement.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatFullCurrency(settlement.profit)}</td>
                   <td className="px-3 py-3 whitespace-nowrap text-center text-xs font-medium text-purple-600">{Math.round(settlement.marginShare * 100)}%</td>
@@ -361,8 +370,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                 <td className="px-3 py-3 whitespace-nowrap text-sm text-slate-900">Total ({sortedSettlements.length} creators)</td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-slate-900">{formatFullCurrency(earningsSummary.totalSpend)}</td>
                 <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-blue-600">{formatFullCurrency(earningsSummary.totalCommission)}</td>
-                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">{formatFullCurrency(earningsSummary.totalBonusDiff)}</td>
-                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-emerald-600">{formatFullCurrency(earningsSummary.totalCommission + earningsSummary.totalBonusDiff)}</td>
+                {showBonus && <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-amber-600">{formatFullCurrency(earningsSummary.totalBonusDiff)}</td>}
+                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-mono text-emerald-600">{formatFullCurrency(earningsSummary.totalCommission + (showBonus ? earningsSummary.totalBonusDiff : 0))}</td>
                 <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono ${earningsSummary.totalProfit >= 0 ? 'text-green-600' : 'text-red-500'}`}>{formatFullCurrency(earningsSummary.totalProfit)}</td>
                 <td className="px-3 py-3 whitespace-nowrap text-center text-xs text-slate-400">-</td>
                 <td className={`px-3 py-3 whitespace-nowrap text-right text-sm font-mono ${earningsSummary.totalMarginTecdo >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>{formatFullCurrency(earningsSummary.totalMarginTecdo)}</td>
@@ -374,7 +383,7 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
       </div>
       )}
 
-      {(hasValidData || hasActualMonthlyData) && (useBonusCalCommission || hasActualMonthlyData) && (() => {
+      {(hasValidData || hasActualMonthlyData) && showBonus && (useBonusCalCommission || hasActualMonthlyData) && (() => {
         const dataMonth = startDate.toLocaleString('en-US', { month: 'short' });
         const bonusMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1).toLocaleString('en-US', { month: 'short' });
         const commissionMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 2, 1).toLocaleString('en-US', { month: 'short' });
