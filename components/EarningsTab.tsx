@@ -63,6 +63,10 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [sortField, setSortField] = useState<keyof CreatorSettlement>('adSpend');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [marketplaceFilter, setMarketplaceFilter] = useState<string>('all');
+
+  const marketplaces = useMemo(() => Array.from(new Set(adData.map(d => d.marketplace))).sort(), [adData]);
+  const filteredAdData = useMemo(() => marketplaceFilter === 'all' ? adData : adData.filter(d => d.marketplace === marketplaceFilter), [adData, marketplaceFilter]);
 
   const { startDate, endDate } = useMemo(() => {
     if (timePreset === 'custom' && customStartDate && customEndDate) {
@@ -125,9 +129,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
         totalProfit: 0, totalMarginTecdo: 0, creatorSettlements: [],
       };
     }
-    // Pass ALL bonusCalData so multi-month periods can look up any month
-    return calculateCreatorSettlements(adData, bonusCalData, startDate, endDate, isMonthlyPeriod, monthlyEarningData);
-  }, [adData, bonusCalData, startDate, endDate, isMonthlyPeriod, hasValidData, hasActualMonthlyData, monthlyEarningData]);
+    return calculateCreatorSettlements(filteredAdData, bonusCalData, startDate, endDate, isMonthlyPeriod, monthlyEarningData);
+  }, [filteredAdData, bonusCalData, startDate, endDate, isMonthlyPeriod, hasValidData, hasActualMonthlyData, monthlyEarningData]);
 
   const sortedSettlements = useMemo(() => {
     const sorted = [...earningsSummary.creatorSettlements];
@@ -187,6 +190,17 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                 <option value="last_month">Last Month</option>
                 <option value="this_quarter">This Quarter</option>
                 <option value="custom">Custom Range</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            </div>
+            <div className="relative">
+              <select
+                value={marketplaceFilter}
+                onChange={(e) => setMarketplaceFilter(e.target.value)}
+                className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-10 text-sm font-medium text-slate-700 shadow-sm cursor-pointer hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="all">All Marketplaces</option>
+                {marketplaces.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             </div>

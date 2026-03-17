@@ -1,6 +1,7 @@
 import { AdData, AdDataRaw, CreatorTierData, TierLevel, CreatorBonusCalData, CreatorSettlement, EarningsSummary, MonthlyEarningRow } from '../types';
 
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RXtp9vUyu-UnIazbcW-CAy-Y91COaMD-u--oeekb2D/pub?output=csv';
+const AMAZON_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RXtp9vUyu-UnIazbcW-CAy-Y91COaMD-u--oeekb2D/pub?output=csv';
+const WALMART_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSjgnJZEKmjqkyz6ge6xGAsI_oVLi4jDFvLSKjtkGlMA-skOOkUluVhf2d_0Mni1oV5A9ZiV4jbSJk/pub?output=csv';
 
 // Bonus Cal CSV URL - using export format with gid for the specific tab
 const BONUS_CAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1134944905';
@@ -106,105 +107,92 @@ const normalizeTheme = (rawTheme: string): string => {
   return `Other/${rawTheme.charAt(0).toUpperCase() + rawTheme.slice(1)}`;
 };
 
+const fetchDataFromSource = async (url: string, marketplace: string): Promise<AdDataRaw[]> => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch ${marketplace} data: ${response.statusText}`);
+  const text = await response.text();
+  const lines = text.split('\n').filter(line => line.trim() !== '');
+  if (lines.length < 2) return [];
+
+  const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+
+  let creatorIdx = headers.findIndex(h => h.includes('creator') || h.includes('influencer'));
+  if (creatorIdx === -1) creatorIdx = 0; // Walmart has empty first-column header
+
+  const idx = {
+    date: headers.findIndex(h => h.includes('date') || h.includes('time')),
+    creator: creatorIdx,
+    content: headers.findIndex(h => (h.includes('content') || h.includes('post') || h.includes('title') || h === 'name') && !h.includes('creator')),
+    platform: headers.findIndex(h => h.includes('platform') || h.includes('source')),
+    category: headers.findIndex(h => h.includes('categor')),
+    theme: headers.findIndex(h => h.includes('theme') || h.includes('topic')),
+    spend: headers.findIndex(h => h.includes('spend') || h.includes('cost') || h.includes('amount')),
+    gmv: headers.findIndex(h => h.includes('gmv')),
+    earning: headers.findIndex(h => h.includes('earning')),
+    status: headers.findIndex(h => h.includes('status') || h.includes('state') || h.includes('active')),
+    postUrl: headers.findIndex(h => h.includes('post url') || h.includes('post link') || h.includes('ig link') || h.includes('fb link') || h.includes('social link')),
+    amazonUrl: headers.findIndex(h => h.includes('amazon') || h.includes('landing') || h.includes('product link') || h.includes('asin')),
+  };
+
+  return lines.slice(1).map(line => {
+    const vals = parseCSVLine(line);
+    let status = 'unknown';
+    if (idx.status !== -1 && vals[idx.status]) {
+      const rawStatus = vals[idx.status].toLowerCase().trim();
+      if (rawStatus.includes('run') || rawStatus.includes('active') || rawStatus === 'on') status = 'run';
+      else if (rawStatus.includes('pause')) status = 'paused';
+      else if (rawStatus.includes('stop') || rawStatus.includes('end') || rawStatus === 'off') status = 'stopped';
+      else status = rawStatus || 'unknown';
+    }
+    const rawTheme = idx.theme !== -1 ? (vals[idx.theme] || '').trim() : '';
+
+    return {
+      date: new Date(vals[idx.date]),
+      creatorName: idx.creator !== -1 ? (vals[idx.creator] || 'Unknown') : 'Unknown',
+      contentName: idx.content !== -1 ? vals[idx.content] : (idx.creator !== -1 ? `${vals[idx.creator]} Post` : 'Untitled'),
+      platform: idx.platform !== -1 ? vals[idx.platform] : 'Other',
+      marketplace,
+      category: idx.category !== -1 ? vals[idx.category] : 'Uncategorized',
+      theme: normalizeTheme(rawTheme),
+      spend: idx.spend !== -1 ? parseCurrency(vals[idx.spend]) : 0,
+      gmv: idx.gmv !== -1 ? parseCurrency(vals[idx.gmv]) : 0,
+      earning: idx.earning !== -1 ? parseCurrency(vals[idx.earning]) : 0,
+      status,
+      postUrl: idx.postUrl !== -1 ? vals[idx.postUrl]?.trim() || undefined : undefined,
+      amazonUrl: idx.amazonUrl !== -1 ? vals[idx.amazonUrl]?.trim() || undefined : undefined,
+    };
+  }).filter(d => !isNaN(d.date.getTime()));
+};
+
 export const fetchData = async (): Promise<AdData[]> => {
   try {
-    const response = await fetch(CSV_URL);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch data: ${response.statusText}`);
-    }
-    const text = await response.text();
-    const lines = text.split('\n').filter(line => line.trim() !== '');
-    
-    if (lines.length < 2) return [];
+    const [amazonRaw, walmartRaw] = await Promise.all([
+      fetchDataFromSource(AMAZON_CSV_URL, 'Amazon'),
+      fetchDataFromSource(WALMART_CSV_URL, 'Walmart').catch(() => [] as AdDataRaw[]),
+    ]);
 
-    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase());
-    
-    // Improved Header Mapping with stricter checks to avoid misidentification
-    const idx = {
-      date: headers.findIndex(h => h.includes('date') || h.includes('time')),
-      creator: headers.findIndex(h => h.includes('creator') || h.includes('influencer')),
-      // Fix: Ensure we don't pick up 'creator name' as content name just because it has 'name'
-      // Look for 'content', 'post', 'title', or exact 'name' match
-      content: headers.findIndex(h => (h.includes('content') || h.includes('post') || h.includes('title') || h === 'name') && !h.includes('creator')),
-      platform: headers.findIndex(h => h.includes('platform') || h.includes('source')),
-      category: headers.findIndex(h => h.includes('categor')),
-      theme: headers.findIndex(h => h.includes('theme') || h.includes('topic')),
-      spend: headers.findIndex(h => h.includes('spend') || h.includes('cost') || h.includes('amount')),
-      gmv: headers.findIndex(h => h.includes('gmv') || h.includes('sales')),
-      earning: headers.findIndex(h => h.includes('earning') || h.includes('commission') || h.includes('revenue') || h.includes('profit')),
-      status: headers.findIndex(h => h.includes('status') || h.includes('state') || h.includes('active')),
-      postUrl: headers.findIndex(h => h.includes('post url') || h.includes('post link') || h.includes('ig link') || h.includes('fb link') || h.includes('social link')),
-      amazonUrl: headers.findIndex(h => h.includes('amazon') || h.includes('landing') || h.includes('product link') || h.includes('asin')),
-    };
-
-    const rawData: AdDataRaw[] = lines.slice(1).map(line => {
-      const vals = parseCSVLine(line);
-      // Parse status - normalize to 'run', 'paused', or 'stopped'
-      let status = 'unknown';
-      if (idx.status !== -1 && vals[idx.status]) {
-        const rawStatus = vals[idx.status].toLowerCase().trim();
-        if (rawStatus.includes('run') || rawStatus.includes('active') || rawStatus === 'on') {
-          status = 'run';
-        } else if (rawStatus.includes('pause')) {
-          status = 'paused';
-        } else if (rawStatus.includes('stop') || rawStatus.includes('end') || rawStatus === 'off') {
-          status = 'stopped';
-        } else {
-          status = rawStatus || 'unknown';
-        }
-      }
-      
-      // Parse and normalize theme into categories
-      const rawTheme = idx.theme !== -1 ? (vals[idx.theme] || '').trim() : '';
-      const normalizedTheme = normalizeTheme(rawTheme);
-      
-      return {
-        date: new Date(vals[idx.date]),
-        creatorName: idx.creator !== -1 ? vals[idx.creator] : 'Unknown',
-        contentName: idx.content !== -1 ? vals[idx.content] : (idx.creator !== -1 ? `${vals[idx.creator]} Post` : 'Untitled'),
-        platform: idx.platform !== -1 ? vals[idx.platform] : 'Other',
-        category: idx.category !== -1 ? vals[idx.category] : 'Uncategorized',
-        theme: normalizedTheme,
-        spend: idx.spend !== -1 ? parseCurrency(vals[idx.spend]) : 0,
-        gmv: idx.gmv !== -1 ? parseCurrency(vals[idx.gmv]) : 0,
-        earning: idx.earning !== -1 ? parseCurrency(vals[idx.earning]) : 0,
-        status,
-        postUrl: idx.postUrl !== -1 ? vals[idx.postUrl]?.trim() || undefined : undefined,
-        amazonUrl: idx.amazonUrl !== -1 ? vals[idx.amazonUrl]?.trim() || undefined : undefined,
-      };
-    }).filter(d => !isNaN(d.date.getTime())); // Filter invalid dates
-
-    // Sort by date for cumulative calc
+    const rawData = [...amazonRaw, ...walmartRaw];
     rawData.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    // Calculate ROI and Cumulative Data
     const cumulativeMap = new Map<string, { spend: number; earning: number }>();
-    
-    const processed: AdData[] = rawData.map((item, index) => {
-      // Daily ROI
-      const roi = item.spend > 0 ? item.earning / item.spend : 0;
 
-      // Cumulative
-      const prev = cumulativeMap.get(item.contentName) || { spend: 0, earning: 0 };
+    return rawData.map((item, index) => {
+      const roi = item.spend > 0 ? item.earning / item.spend : 0;
+      const key = `${item.marketplace}|${item.contentName}`;
+      const prev = cumulativeMap.get(key) || { spend: 0, earning: 0 };
       const newCumSpend = prev.spend + item.spend;
       const newCumEarning = prev.earning + item.earning;
-      
-      cumulativeMap.set(item.contentName, { spend: newCumSpend, earning: newCumEarning });
-
-      const cumulativeRoi = newCumSpend > 0 ? newCumEarning / newCumSpend : 0;
+      cumulativeMap.set(key, { spend: newCumSpend, earning: newCumEarning });
 
       return {
         ...item,
-        id: `${item.contentName}-${index}`,
+        id: `${item.marketplace}-${item.contentName}-${index}`,
         roi,
         cumulativeSpend: newCumSpend,
         cumulativeEarning: newCumEarning,
-        cumulativeRoi
+        cumulativeRoi: newCumSpend > 0 ? newCumEarning / newCumSpend : 0,
       };
     });
-
-    return processed;
-
   } catch (error) {
     console.error("Error loading data:", error);
     throw error;

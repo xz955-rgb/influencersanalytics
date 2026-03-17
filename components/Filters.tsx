@@ -8,6 +8,7 @@ interface FiltersProps {
   uniqueOptions: {
     creators: string[];
     platforms: string[];
+    marketplaces: string[];
     categories: string[];
     themes: string[];
   };
@@ -30,6 +31,7 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
       ...prev,
       creators: [],
       platforms: [],
+      marketplaces: [],
       categories: [],
       themes: []
     }));
@@ -327,6 +329,7 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
         </div>
       </div>
 
+      <Section title="Marketplace" options={uniqueOptions.marketplaces} selectedKey="marketplaces" />
       <Section title="Platforms" options={uniqueOptions.platforms} selectedKey="platforms" />
       <Section title="Creators" options={uniqueOptions.creators} selectedKey="creators" />
       <Section title="Categories" options={uniqueOptions.categories} selectedKey="categories" />

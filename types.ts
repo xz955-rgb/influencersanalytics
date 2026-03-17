@@ -3,6 +3,7 @@ export interface AdDataRaw {
   creatorName: string;
   contentName: string;
   platform: string;
+  marketplace: string; // "Amazon" | "Walmart"
   category: string;
   theme: string;
   spend: number;
@@ -26,6 +27,7 @@ export interface FilterState {
   endDate: string;
   creators: string[];
   platforms: string[];
+  marketplaces: string[];
   categories: string[];
   themes: string[];
 }

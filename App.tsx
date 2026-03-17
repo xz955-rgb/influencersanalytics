@@ -76,6 +76,7 @@ const Dashboard: React.FC = () => {
     endDate: '',
     creators: [],
     platforms: [],
+    marketplaces: [],
     categories: [],
     themes: []
   });
@@ -120,6 +121,7 @@ const Dashboard: React.FC = () => {
     return {
       creators: getUniques('creatorName'),
       platforms: getUniques('platform'),
+      marketplaces: getUniques('marketplace'),
       categories: getUniques('category'),
       themes: getUniques('theme')
     };
@@ -135,10 +137,11 @@ const Dashboard: React.FC = () => {
                         (!filters.endDate || item.date <= new Date(filters.endDate));
       const creatorMatch = filters.creators.length === 0 || filters.creators.includes(item.creatorName);
       const platformMatch = filters.platforms.length === 0 || filters.platforms.includes(item.platform);
+      const marketplaceMatch = filters.marketplaces.length === 0 || filters.marketplaces.includes(item.marketplace);
       const categoryMatch = filters.categories.length === 0 || filters.categories.includes(item.category);
       const themeMatch = filters.themes.length === 0 || filters.themes.includes(item.theme);
 
-      return dateMatch && creatorMatch && platformMatch && categoryMatch && themeMatch;
+      return dateMatch && creatorMatch && platformMatch && marketplaceMatch && categoryMatch && themeMatch;
     });
   }, [data, filters]);
 

@@ -511,7 +511,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   // Aggregated Data for Deep Dive Leaderboard
   const postsInSegmentAggregated = useMemo(() => {
     const stats: Record<string, { 
-        spend: number, earning: number, creator: string, platform: string, 
+        spend: number, earning: number, creator: string, platform: string, marketplace: string,
         minTime: number, maxTime: number, status: string
     }> = {};
     
@@ -524,7 +524,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     segmentData.forEach(item => {
         if (!stats[item.contentName]) {
             stats[item.contentName] = { 
-                spend: 0, earning: 0, creator: item.creatorName, platform: item.platform,
+                spend: 0, earning: 0, creator: item.creatorName, platform: item.platform, marketplace: item.marketplace,
                 minTime: item.date.getTime(), maxTime: item.date.getTime(),
                 status: item.status
             };
@@ -1917,7 +1917,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                                                 <span className="w-2 h-2 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: getColorForEntity(post.contentName, postNamesInSegment) }}></span>
                                                 <div className="min-w-0">
                                                     <div className="text-sm font-medium text-slate-900 truncate max-w-[180px]" title={post.contentName}>{post.contentName}</div>
-                                                    <div className="text-xs text-slate-500">{post.creator} • {post.platform}</div>
+                                                    <div className="text-xs text-slate-500">{post.creator} • {post.platform} • <span className={post.marketplace === 'Walmart' ? 'text-blue-600 font-medium' : 'text-orange-600 font-medium'}>{post.marketplace}</span></div>
                                                 </div>
                                             </div>
                                         </td>
