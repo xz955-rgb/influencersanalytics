@@ -183,8 +183,6 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                 onChange={(e) => handlePresetChange(e.target.value as TimeRangePreset)}
                 className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-10 text-sm font-medium text-slate-700 shadow-sm cursor-pointer hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="this_week">This Week</option>
-                <option value="last_week">Last Week</option>
                 <option value="this_month">This Month</option>
                 <option value="last_month">Last Month</option>
                 <option value="this_quarter">This Quarter</option>

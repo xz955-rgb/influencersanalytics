@@ -5,9 +5,61 @@ import { Filters } from './components/Filters';
 import { OverviewDashboard } from './components/OverviewDashboard';
 import { LifecyclePerformance } from './components/LifecyclePerformance';
 import { EarningsTab } from './components/EarningsTab';
-import { LayoutDashboard, LineChart, DollarSign, Loader2, Menu } from 'lucide-react';
+import { LayoutDashboard, LineChart, DollarSign, Loader2, Menu, Lock } from 'lucide-react';
+
+const ACCESS_CODE = '24564837';
+
+const LoginGate: React.FC<{ onAuth: () => void }> = ({ onAuth }) => {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (code === ACCESS_CODE) {
+      sessionStorage.setItem('authed', '1');
+      onAuth();
+    } else {
+      setError(true);
+      setTimeout(() => setError(false), 1500);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4">
+      <form onSubmit={handleSubmit} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 w-full max-w-sm shadow-2xl">
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-14 h-14 bg-indigo-500 rounded-xl flex items-center justify-center mb-4 shadow-lg">
+            <Lock className="w-7 h-7 text-white" />
+          </div>
+          <h1 className="text-xl font-bold text-white">Influencer Analytics</h1>
+          <p className="text-sm text-slate-300 mt-1">Enter access code to continue</p>
+        </div>
+        <input
+          type="password"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Access Code"
+          autoFocus
+          className={`w-full px-4 py-3 rounded-lg bg-white/10 border text-white placeholder-slate-400 text-center text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors ${error ? 'border-red-500 shake' : 'border-white/20'}`}
+        />
+        <button type="submit" className="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-colors shadow-lg">
+          Enter
+        </button>
+        {error && <p className="text-red-400 text-sm text-center mt-3">Incorrect code</p>}
+      </form>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem('authed') === '1');
+
+  if (!authed) return <LoginGate onAuth={() => setAuthed(true)} />;
+
+  return <Dashboard />;
+};
+
+const Dashboard: React.FC = () => {
   const [data, setData] = useState<AdData[]>([]);
   const [tierData, setTierData] = useState<CreatorTierData[]>([]);
   const [bonusCalData, setBonusCalData] = useState<CreatorBonusCalData[]>([]);
