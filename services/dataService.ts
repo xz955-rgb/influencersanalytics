@@ -285,27 +285,29 @@ export const fetchPostLinks = async (): Promise<Map<string, PostLinks>> => {
   }
 };
 
-// Parse date string like "2026/1/31" to "YYYY-MM" format
+// Parse date string like "2026/1/31" to { month: "YYYY-MM", day: number }
 // Moved before fetchBonusCalData so it can be used by both functions
-const parseBonusCalDate = (dateStr: string): string => {
-  if (!dateStr) return '';
+const parseBonusCalDate = (dateStr: string): { month: string; day: number } => {
+  if (!dateStr) return { month: '', day: 0 };
   // Handle formats: "2026/1/31", "2026-1-31", "1/31/2026"
   const parts = dateStr.split(/[\/\-]/);
-  if (parts.length < 2) return '';
+  if (parts.length < 3) return { month: '', day: 0 };
   
-  let year: number, month: number;
+  let year: number, month: number, day: number;
   if (parts[0].length === 4) {
     // Format: 2026/1/31 or 2026-1-31
     year = parseInt(parts[0]);
     month = parseInt(parts[1]);
+    day = parseInt(parts[2]);
   } else {
     // Format: 1/31/2026
     month = parseInt(parts[0]);
+    day = parseInt(parts[1]);
     year = parseInt(parts[2]);
   }
   
-  if (isNaN(year) || isNaN(month)) return '';
-  return `${year}-${String(month).padStart(2, '0')}`;
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return { month: '', day: 0 };
+  return { month: `${year}-${String(month).padStart(2, '0')}`, day };
 };
 
 // Fetch Bonus Cal data for tier tracking (used by TierRewardsTracker)
@@ -343,7 +345,8 @@ export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
       const vals = parseCSVLine(line);
       
       // Parse date to get dataMonth
-      const dataMonth = idx.date !== -1 ? parseBonusCalDate(vals[idx.date]) : '';
+      const parsed = idx.date !== -1 ? parseBonusCalDate(vals[idx.date]) : { month: '', day: 0 };
+      const dataMonth = parsed.month;
       
       const tiers: TierLevel[] = [];
       
@@ -421,8 +424,8 @@ export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]>
     const creatorData: CreatorBonusCalData[] = lines.slice(1).map(line => {
       const vals = parseCSVLine(line);
       
-      // Parse date to get dataMonth
-      const dataMonth = idx.date !== -1 ? parseBonusCalDate(vals[idx.date]) : '';
+      // Parse date to get dataMonth and dataDay
+      const parsed = idx.date !== -1 ? parseBonusCalDate(vals[idx.date]) : { month: '', day: 0 };
       
       const tiers: TierLevel[] = [];
       const tierConfigs = [
@@ -445,7 +448,8 @@ export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]>
 
       return {
         creatorName: idx.creator !== -1 ? vals[idx.creator]?.trim() || 'Unknown' : 'Unknown',
-        dataMonth,
+        dataMonth: parsed.month,
+        dataDay: parsed.day,
         totalShippedRevenue: idx.salesUpToDate !== -1 ? parseCurrency(vals[idx.salesUpToDate]) : 0,
         shippedRevOrganic: idx.shippedRevOrganic !== -1 ? parseCurrency(vals[idx.shippedRevOrganic]) : 0,
         shippedRevAds: idx.shippedRevAds !== -1 ? parseCurrency(vals[idx.shippedRevAds]) : 0,
@@ -692,13 +696,14 @@ export const calculateCreatorSettlements = (
     if (!bc || bc.tiers.length === 0) return { bonus: 0, projTier: 0, orgTier: 0 };
 
     let sales = bc.totalShippedRevenue;
-    let organic = bc.shippedRevOrganic;
+    const organic = bc.shippedRevOrganic; // Organic is historical, don't project
 
-    if (month === currentMonthStr || bc.dataMonth === currentMonthStr) {
-      const daysSoFar = Math.max(1, now.getDate());
+    // Only project sales if this is the current month data
+    if (bc.dataMonth === currentMonthStr) {
+      // Use the actual data day from Bonus Cal to determine days elapsed
+      const daysSoFar = Math.max(1, bc.dataDay || now.getDate());
       const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       sales = (sales / daysSoFar) * totalDays;
-      organic = (organic / daysSoFar) * totalDays;
     }
 
     const projTier = calculateTierBonus(sales, bc.tiers);

@@ -91,6 +91,7 @@ export interface TierProgress {
 export interface CreatorBonusCalData {
   creatorName: string;
   dataMonth: string;              // Month of data in "YYYY-MM" format (e.g., "2026-01")
+  dataDay: number;                // Day of month the data is from (e.g., 20 for 2026/3/20)
   totalShippedRevenue: number;    // Sales (up to date)
   shippedRevOrganic: number;      // Shipped Rev.-Organic
   shippedRevAds: number;          // Shipped Rev.-Ads
