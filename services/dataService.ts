@@ -696,14 +696,14 @@ export const calculateCreatorSettlements = (
     if (!bc || bc.tiers.length === 0) return { bonus: 0, projTier: 0, orgTier: 0 };
 
     let sales = bc.totalShippedRevenue;
-    const organic = bc.shippedRevOrganic; // Organic is historical, don't project
+    let organic = bc.shippedRevOrganic;
 
-    // Only project sales if this is the current month data
+    // Project both sales and organic if this is the current month data
     if (bc.dataMonth === currentMonthStr) {
-      // Use the actual data day from Bonus Cal to determine days elapsed
       const daysSoFar = Math.max(1, bc.dataDay || now.getDate());
       const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       sales = (sales / daysSoFar) * totalDays;
+      organic = (organic / daysSoFar) * totalDays;
     }
 
     const projTier = calculateTierBonus(sales, bc.tiers);
