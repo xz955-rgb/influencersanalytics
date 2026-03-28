@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "google-auth-library": "^10.6.2",
     "lucide-react": "^0.563.0",
     "puppeteer": "^24.39.0",
     "react": "^19.2.3",

@@ -1,16 +1,30 @@
 import { AdData, AdDataRaw, CreatorTierData, TierLevel, CreatorBonusCalData, CreatorSettlement, EarningsSummary, MonthlyEarningRow } from '../types';
 
-const AMAZON_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RXtp9vUyu-UnIazbcW-CAy-Y91COaMD-u--oeekb2D/pub?output=csv';
-const WALMART_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSjgnJZEKmjqkyz6ge6xGAsI_oVLi4jDFvLSKjtkGlMA-skOOkUluVhf2d_0Mni1oV5A9ZiV4jbSJk/pub?output=csv';
+// Netlify Function endpoint for fetching sheets (private, authenticated)
+const SHEET_API = '/.netlify/functions/fetch-sheet';
 
-// Bonus Cal CSV URL - using export format with gid for the specific tab
-const BONUS_CAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1134944905';
+// Fallback direct URLs — used only when the Netlify Function is unavailable (e.g. local dev without netlify dev)
+const FALLBACK_URLS: Record<string, string> = {
+  amazon: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4i27XKB_KySoEcOucrSaMO4wIhn29-mR4P-RXtp9vUyu-UnIazbcW-CAy-Y91COaMD-u--oeekb2D/pub?output=csv',
+  walmart: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSjgnJZEKmjqkyz6ge6xGAsI_oVLi4jDFvLSKjtkGlMA-skOOkUluVhf2d_0Mni1oV5A9ZiV4jbSJk/pub?output=csv',
+  bonus_cal: 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1134944905',
+  monthly_earning: 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1636678788',
+  posts: 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1203420941',
+};
 
-// Monthly Earning Cal CSV URL - actual historical commission and bonus data
-const MONTHLY_EARNING_CAL_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1636678788';
-
-// Posts tab CSV URL for post links (columns E=post URL, F=amazon URL)
-const POSTS_TAB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1203420941';
+const fetchSheetCSV = async (source: string): Promise<string> => {
+  // Try Netlify Function first (works in production and `netlify dev`)
+  try {
+    const res = await fetch(`${SHEET_API}?source=${source}`);
+    if (res.ok) return res.text();
+  } catch { /* fall through */ }
+  // Fallback to direct published URL
+  const url = FALLBACK_URLS[source];
+  if (!url) throw new Error(`No URL configured for source: ${source}`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch ${source}: ${res.statusText}`);
+  return res.text();
+};
 
 // Post links mapping type
 export interface PostLinks {
@@ -107,10 +121,7 @@ const normalizeTheme = (rawTheme: string): string => {
   return `Other/${rawTheme.charAt(0).toUpperCase() + rawTheme.slice(1)}`;
 };
 
-const fetchDataFromSource = async (url: string, marketplace: string): Promise<AdDataRaw[]> => {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to fetch ${marketplace} data: ${response.statusText}`);
-  const text = await response.text();
+const parseRawCSV = (text: string, marketplace: string): AdDataRaw[] => {
   const lines = text.split('\n').filter(line => line.trim() !== '');
   if (lines.length < 2) return [];
 
@@ -166,10 +177,12 @@ const fetchDataFromSource = async (url: string, marketplace: string): Promise<Ad
 
 export const fetchData = async (): Promise<AdData[]> => {
   try {
-    const [amazonRaw, walmartRaw] = await Promise.all([
-      fetchDataFromSource(AMAZON_CSV_URL, 'Amazon'),
-      fetchDataFromSource(WALMART_CSV_URL, 'Walmart').catch(() => [] as AdDataRaw[]),
+    const [amazonText, walmartText] = await Promise.all([
+      fetchSheetCSV('amazon'),
+      fetchSheetCSV('walmart').catch(() => ''),
     ]);
+    const amazonRaw = parseRawCSV(amazonText, 'Amazon');
+    const walmartRaw = walmartText ? parseRawCSV(walmartText, 'Walmart') : [];
 
     const rawData = [...amazonRaw, ...walmartRaw];
     rawData.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -209,12 +222,7 @@ export const normalizeContentName = (name: string): string => {
 // Key format: "creatorName|normalizedContentName" to handle duplicate contentNames across creators
 export const fetchPostLinks = async (): Promise<Map<string, PostLinks>> => {
   try {
-    const response = await fetch(POSTS_TAB_CSV_URL);
-    if (!response.ok) {
-      console.warn('Could not fetch post links');
-      return new Map();
-    }
-    const text = await response.text();
+    const text = await fetchSheetCSV('posts');
     const lines = text.split('\n').filter(line => line.trim() !== '');
     
     if (lines.length < 2) return new Map();
@@ -313,11 +321,7 @@ const parseBonusCalDate = (dateStr: string): { month: string; day: number } => {
 // Fetch Bonus Cal data for tier tracking (used by TierRewardsTracker)
 export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
   try {
-    const response = await fetch(BONUS_CAL_CSV_URL);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch bonus cal data: ${response.statusText}`);
-    }
-    const text = await response.text();
+    const text = await fetchSheetCSV('bonus_cal');
     const lines = text.split('\n').filter(line => line.trim() !== '');
     
     if (lines.length < 2) return [];
@@ -387,11 +391,7 @@ export const fetchBonusCalData = async (): Promise<CreatorTierData[]> => {
 // Fetch extended Bonus Cal data with organic/ads breakdown for earnings calculation
 export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]> => {
   try {
-    const response = await fetch(BONUS_CAL_CSV_URL);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch bonus cal data: ${response.statusText}`);
-    }
-    const text = await response.text();
+    const text = await fetchSheetCSV('bonus_cal');
     const lines = text.split('\n').filter(line => line.trim() !== '');
     
     if (lines.length < 2) return [];
@@ -470,12 +470,7 @@ export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]>
 // Fetch Monthly Earning Cal data — actual commission and bonus for past months
 export const fetchMonthlyEarningCalData = async (): Promise<MonthlyEarningRow[]> => {
   try {
-    const response = await fetch(MONTHLY_EARNING_CAL_CSV_URL);
-    if (!response.ok) {
-      console.warn('Could not fetch monthly earning cal data');
-      return [];
-    }
-    const text = await response.text();
+    const text = await fetchSheetCSV('monthly_earning');
     const lines = text.split('\n').filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
 
