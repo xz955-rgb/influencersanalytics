@@ -212,6 +212,9 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   // 3. Breakdown Analysis (Charts)
   // ----------------------------------------------------------------------
   const [breakdownView, setBreakdownView] = useState<'trend' | 'margin'>('trend');
+  const [hitRateRange, setHitRateRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter' | 'custom'>('all');
+  const [hitRateCustomStart, setHitRateCustomStart] = useState<string>('');
+  const [hitRateCustomEnd, setHitRateCustomEnd] = useState<string>('');
   const [marginRange, setMarginRange] = useState<'all' | 'this_month' | 'last_month' | 'this_quarter'>('all');
   const [marginChartMode, setMarginChartMode] = useState<'daily' | 'cumulative'>('cumulative');
   const [marginCreator, setMarginCreator] = useState<string>('');
@@ -430,9 +433,35 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
   // 3b. Content Hit Rate (ROI > 1) by Creator, Monthly Trend
   // ----------------------------------------------------------------------
   const hitRateData = useMemo(() => {
-    // Group ad data by creator → month → post → aggregate ROI
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Determine date range
+    let rangeStart: Date | null = null;
+    let rangeEnd: Date | null = null;
+    if (hitRateRange === 'this_month') {
+      rangeStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      rangeEnd = today;
+    } else if (hitRateRange === 'last_month') {
+      rangeStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      rangeEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (hitRateRange === 'this_quarter') {
+      const q = Math.floor(today.getMonth() / 3);
+      rangeStart = new Date(today.getFullYear(), q * 3, 1);
+      rangeEnd = today;
+    } else if (hitRateRange === 'custom' && hitRateCustomStart && hitRateCustomEnd) {
+      rangeStart = new Date(hitRateCustomStart);
+      rangeEnd = new Date(hitRateCustomEnd);
+      rangeEnd.setHours(23, 59, 59, 999);
+    }
+
+    const filtered = rangeStart && rangeEnd
+      ? data.filter(d => d.date >= rangeStart! && d.date <= rangeEnd!)
+      : data;
+
+    // Group by creator → month → post → aggregate ROI
     const creatorMonthPosts = new Map<string, Map<string, Map<string, { spend: number; earning: number }>>>();
-    data.forEach(d => {
+    filtered.forEach(d => {
       const m = `${d.date.getFullYear()}-${String(d.date.getMonth() + 1).padStart(2, '0')}`;
       if (!creatorMonthPosts.has(d.creatorName)) creatorMonthPosts.set(d.creatorName, new Map());
       const months = creatorMonthPosts.get(d.creatorName)!;
@@ -442,7 +471,6 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
       posts.set(d.contentName, { spend: prev.spend + d.spend, earning: prev.earning + d.earning });
     });
 
-    // Build per-creator per-month hit rate
     const allMonths = new Set<string>();
     const creatorNames: string[] = [];
     const creatorStats = new Map<string, { months: Map<string, { total: number; hits: number; rate: number }> }>();
@@ -465,7 +493,6 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     const sortedMonths = Array.from(allMonths).sort();
     const monthLabels = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    // Chart data: array of { month, creator1: rate, creator2: rate, ... }
     const chartData = sortedMonths.map(m => {
       const [y, mon] = m.split('-');
       const entry: Record<string, string | number> = { month: `${monthLabels[parseInt(mon)]} ${y}` };
@@ -478,34 +505,34 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
       return entry;
     });
 
-    // Summary: current month vs last month vs all-time
-    const now = new Date();
-    const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const lastMonth = now.getMonth() === 0
-      ? `${now.getFullYear() - 1}-12`
-      : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
+    // Summary: last month in range vs previous month, plus selected-range aggregate
+    const lastInRange = sortedMonths[sortedMonths.length - 1] || '';
+    const prevIdx = sortedMonths.length >= 2 ? sortedMonths.length - 2 : -1;
+    const prevInRange = prevIdx >= 0 ? sortedMonths[prevIdx] : '';
 
     const summary = creatorNames.sort().map(c => {
       const stats = creatorStats.get(c)!;
-      const cur = stats.months.get(curMonth);
-      const prev = stats.months.get(lastMonth);
+      const cur = lastInRange ? stats.months.get(lastInRange) : undefined;
+      const prev = prevInRange ? stats.months.get(prevInRange) : undefined;
       let allHits = 0, allTotal = 0;
       stats.months.forEach(s => { allHits += s.hits; allTotal += s.total; });
-      const allTimeRate = allTotal > 0 ? (allHits / allTotal) * 100 : 0;
+      const rangeRate = allTotal > 0 ? (allHits / allTotal) * 100 : 0;
       return {
         creator: c,
         curRate: cur?.rate ?? null,
         curHits: cur?.hits ?? 0,
         curTotal: cur?.total ?? 0,
+        curLabel: lastInRange ? `${monthLabels[parseInt(lastInRange.split('-')[1])]}` : '',
         prevRate: prev?.rate ?? null,
-        allTimeRate,
+        prevLabel: prevInRange ? `${monthLabels[parseInt(prevInRange.split('-')[1])]}` : '',
+        rangeRate,
         allHits,
         allTotal,
       };
     });
 
     return { chartData, creatorNames: creatorNames.sort(), summary };
-  }, [data]);
+  }, [data, hitRateRange, hitRateCustomStart, hitRateCustomEnd]);
 
   // ----------------------------------------------------------------------
   // 4. Deep Dive Analysis
@@ -1513,6 +1540,26 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
             <h3 className="text-lg font-bold text-slate-800">Content Hit Rate by Creator</h3>
             <p className="text-xs text-slate-500">Percentage of posts with ROI &gt; 1 per month — tracks content quality over time</p>
           </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={hitRateRange}
+              onChange={e => { setHitRateRange(e.target.value as typeof hitRateRange); if (e.target.value !== 'custom') { setHitRateCustomStart(''); setHitRateCustomEnd(''); } }}
+              className="appearance-none bg-white border border-slate-300 rounded-lg py-1.5 pl-3 pr-8 text-xs font-medium text-slate-700 shadow-sm cursor-pointer hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Time</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="custom">Custom Range</option>
+            </select>
+            {hitRateRange === 'custom' && (
+              <div className="flex items-center gap-1">
+                <input type="date" value={hitRateCustomStart} onChange={e => setHitRateCustomStart(e.target.value)} className="border border-slate-300 rounded-md px-2 py-1 text-xs" />
+                <span className="text-slate-400 text-xs">to</span>
+                <input type="date" value={hitRateCustomEnd} onChange={e => setHitRateCustomEnd(e.target.value)} className="border border-slate-300 rounded-md px-2 py-1 text-xs" />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Chart */}
@@ -1544,10 +1591,10 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
             <thead>
               <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase">
                 <th className="text-left py-2 px-3 font-semibold">Creator</th>
-                <th className="text-center py-2 px-3 font-semibold">This Month</th>
-                <th className="text-center py-2 px-3 font-semibold">Last Month</th>
+                <th className="text-center py-2 px-3 font-semibold">Latest Month</th>
+                <th className="text-center py-2 px-3 font-semibold">Previous Month</th>
                 <th className="text-center py-2 px-3 font-semibold">Trend</th>
-                <th className="text-center py-2 px-3 font-semibold">All-Time</th>
+                <th className="text-center py-2 px-3 font-semibold">Range Avg</th>
                 <th className="text-center py-2 px-3 font-semibold">Total Posts</th>
               </tr>
             </thead>
@@ -1562,11 +1609,13 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         ? <span className={`font-bold ${s.curRate >= 50 ? 'text-green-600' : s.curRate >= 25 ? 'text-amber-600' : 'text-red-500'}`}>{s.curRate.toFixed(0)}%</span>
                         : <span className="text-slate-400">-</span>}
                       {s.curTotal > 0 && <span className="text-[10px] text-slate-400 ml-1">({s.curHits}/{s.curTotal})</span>}
+                      {s.curLabel && <span className="text-[10px] text-slate-400 ml-0.5">{s.curLabel}</span>}
                     </td>
                     <td className="py-2 px-3 text-center">
                       {s.prevRate !== null
                         ? <span className="font-medium text-slate-600">{s.prevRate.toFixed(0)}%</span>
                         : <span className="text-slate-400">-</span>}
+                      {s.prevLabel && s.prevRate !== null && <span className="text-[10px] text-slate-400 ml-0.5">{s.prevLabel}</span>}
                     </td>
                     <td className="py-2 px-3 text-center">
                       {trend !== null ? (
@@ -1575,7 +1624,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
                         </span>
                       ) : <span className="text-slate-400">-</span>}
                     </td>
-                    <td className="py-2 px-3 text-center font-medium text-slate-600">{s.allTimeRate.toFixed(0)}%</td>
+                    <td className="py-2 px-3 text-center font-medium text-slate-600">{s.rangeRate.toFixed(0)}%</td>
                     <td className="py-2 px-3 text-center text-slate-500">{s.allTotal}</td>
                   </tr>
                 );
