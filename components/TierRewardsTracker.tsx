@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { AdData, CreatorTierData, TierProgress, TierLevel, RushAnalysis, PostEfficiency } from '../types';
+import { AdData, CreatorTierData, CreatorBonusCalData, TierProgress, TierLevel, RushAnalysis, PostEfficiency } from '../types';
 import { Target, AlertTriangle, CheckCircle, XCircle, Calendar, ChevronDown, User, Clock, Zap } from 'lucide-react';
 
 interface TierRewardsTrackerProps {
   tierData: CreatorTierData[];
   adData: AdData[];
+  bonusCalData: CreatorBonusCalData[];
 }
 
-export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData, adData }) => {
+export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData, adData, bonusCalData }) => {
   const [selectedCreator, setSelectedCreator] = useState<string>('');
   const [selectedMonth, setSelectedMonth] = useState<string>('');
 
@@ -243,6 +244,19 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
     );
   }
 
+  // Look up ads/organic breakdown from bonusCalData for the selected month + creator
+  const revenueBreakdown = useMemo(() => {
+    const match = bonusCalData.find(
+      bc => bc.creatorName === selectedCreator && bc.dataMonth === selectedMonth
+    );
+    if (!match) return null;
+    return {
+      total: match.totalShippedRevenue,
+      organic: match.shippedRevOrganic,
+      ads: match.shippedRevAds,
+    };
+  }, [bonusCalData, selectedCreator, selectedMonth]);
+
   const currentProgress = tierProgressList.find(p => p.creatorName === selectedCreator) || tierProgressList[0];
   const currentTierData = filteredTierData.find(t => t.creatorName === selectedCreator) || filteredTierData[0];
 
@@ -299,17 +313,24 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
         </div>
       </div>
 
-      <CreatorTierCard progress={currentProgress} tiers={currentTierData.tiers} daysRemaining={daysRemaining} isCurrentMonth={isCurrentMonth} />
+      <CreatorTierCard progress={currentProgress} tiers={currentTierData.tiers} daysRemaining={daysRemaining} isCurrentMonth={isCurrentMonth} revenueBreakdown={revenueBreakdown} />
     </div>
   );
 };
 
-const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; daysRemaining: number; isCurrentMonth: boolean }> = ({ progress, tiers, daysRemaining, isCurrentMonth }) => {
+interface RevenueBreakdown { total: number; organic: number; ads: number }
+
+const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; daysRemaining: number; isCurrentMonth: boolean; revenueBreakdown: RevenueBreakdown | null }> = ({ progress, tiers, daysRemaining, isCurrentMonth, revenueBreakdown }) => {
   const { currentRevenue, currentTier, currentBonus, nextTier, gapToNextTier, dailyGmvNeeded, rushAnalysis } = progress;
 
   const sortedTiers = [...tiers].sort((a, b) => a.threshold - b.threshold);
   const maxThreshold = sortedTiers.length > 0 ? sortedTiers[sortedTiers.length - 1].threshold : currentRevenue;
   const progressPercent = maxThreshold > 0 ? (currentRevenue / maxThreshold) * 100 : 0;
+
+  const adsPct = revenueBreakdown && revenueBreakdown.total > 0
+    ? (revenueBreakdown.ads / revenueBreakdown.total) * 100 : 0;
+  const organicPct = revenueBreakdown && revenueBreakdown.total > 0
+    ? (revenueBreakdown.organic / revenueBreakdown.total) * 100 : 0;
 
   return (
     <div className="bg-white rounded-lg border border-amber-100 shadow-sm p-4">
@@ -324,6 +345,27 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
           <div className="text-xs text-slate-500">Current Shipped Revenue</div>
         </div>
       </div>
+
+      {/* Ads vs Organic Revenue Breakdown */}
+      {revenueBreakdown && revenueBreakdown.total > 0 && (
+        <div className="mb-4 bg-slate-50 rounded-lg p-3 border border-slate-100">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-slate-600">Revenue Breakdown</span>
+            <div className="flex items-center gap-3 text-[10px]">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" /> Ads {adsPct.toFixed(1)}%</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Organic {organicPct.toFixed(1)}%</span>
+            </div>
+          </div>
+          <div className="h-3 rounded-full overflow-hidden flex bg-slate-200">
+            <div className="bg-indigo-500 transition-all" style={{ width: `${adsPct}%` }} />
+            <div className="bg-emerald-500 transition-all" style={{ width: `${organicPct}%` }} />
+          </div>
+          <div className="flex justify-between mt-1.5 text-[10px] text-slate-500">
+            <span>Ads: ${revenueBreakdown.ads.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            <span>Organic: ${revenueBreakdown.organic.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          </div>
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="mb-4">

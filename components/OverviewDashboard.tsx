@@ -427,6 +427,87 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
 
 
   // ----------------------------------------------------------------------
+  // 3b. Content Hit Rate (ROI > 1) by Creator, Monthly Trend
+  // ----------------------------------------------------------------------
+  const hitRateData = useMemo(() => {
+    // Group ad data by creator → month → post → aggregate ROI
+    const creatorMonthPosts = new Map<string, Map<string, Map<string, { spend: number; earning: number }>>>();
+    data.forEach(d => {
+      const m = `${d.date.getFullYear()}-${String(d.date.getMonth() + 1).padStart(2, '0')}`;
+      if (!creatorMonthPosts.has(d.creatorName)) creatorMonthPosts.set(d.creatorName, new Map());
+      const months = creatorMonthPosts.get(d.creatorName)!;
+      if (!months.has(m)) months.set(m, new Map());
+      const posts = months.get(m)!;
+      const prev = posts.get(d.contentName) || { spend: 0, earning: 0 };
+      posts.set(d.contentName, { spend: prev.spend + d.spend, earning: prev.earning + d.earning });
+    });
+
+    // Build per-creator per-month hit rate
+    const allMonths = new Set<string>();
+    const creatorNames: string[] = [];
+    const creatorStats = new Map<string, { months: Map<string, { total: number; hits: number; rate: number }> }>();
+
+    creatorMonthPosts.forEach((months, creator) => {
+      creatorNames.push(creator);
+      const stats = new Map<string, { total: number; hits: number; rate: number }>();
+      months.forEach((posts, month) => {
+        allMonths.add(month);
+        let total = 0, hits = 0;
+        posts.forEach(p => {
+          total++;
+          if (p.spend > 0 && p.earning / p.spend > 1) hits++;
+        });
+        stats.set(month, { total, hits, rate: total > 0 ? (hits / total) * 100 : 0 });
+      });
+      creatorStats.set(creator, { months: stats });
+    });
+
+    const sortedMonths = Array.from(allMonths).sort();
+    const monthLabels = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Chart data: array of { month, creator1: rate, creator2: rate, ... }
+    const chartData = sortedMonths.map(m => {
+      const [y, mon] = m.split('-');
+      const entry: Record<string, string | number> = { month: `${monthLabels[parseInt(mon)]} ${y}` };
+      creatorNames.forEach(c => {
+        const s = creatorStats.get(c)?.months.get(m);
+        entry[c] = s ? Math.round(s.rate) : 0;
+        entry[`${c}_hits`] = s ? s.hits : 0;
+        entry[`${c}_total`] = s ? s.total : 0;
+      });
+      return entry;
+    });
+
+    // Summary: current month vs last month vs all-time
+    const now = new Date();
+    const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const lastMonth = now.getMonth() === 0
+      ? `${now.getFullYear() - 1}-12`
+      : `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
+
+    const summary = creatorNames.sort().map(c => {
+      const stats = creatorStats.get(c)!;
+      const cur = stats.months.get(curMonth);
+      const prev = stats.months.get(lastMonth);
+      let allHits = 0, allTotal = 0;
+      stats.months.forEach(s => { allHits += s.hits; allTotal += s.total; });
+      const allTimeRate = allTotal > 0 ? (allHits / allTotal) * 100 : 0;
+      return {
+        creator: c,
+        curRate: cur?.rate ?? null,
+        curHits: cur?.hits ?? 0,
+        curTotal: cur?.total ?? 0,
+        prevRate: prev?.rate ?? null,
+        allTimeRate,
+        allHits,
+        allTotal,
+      };
+    });
+
+    return { chartData, creatorNames: creatorNames.sort(), summary };
+  }, [data]);
+
+  // ----------------------------------------------------------------------
   // 4. Deep Dive Analysis
   // ----------------------------------------------------------------------
   const [drillDimension, setDrillDimension] = useState<'platform' | 'category' | 'theme' | 'all'>('category');
@@ -1022,7 +1103,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         />
       </div>
 
-      {!hideBonusTracker && <TierRewardsTracker tierData={tierData} adData={data} />}
+      {!hideBonusTracker && <TierRewardsTracker tierData={tierData} adData={data} bonusCalData={bonusCalData} />}
 
       {/* Strategy Alerts Section - Compact */}
       {(strategyAlerts.length > 0 || contentInsights.length > 0) && (
@@ -1423,6 +1504,87 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         </div>
         )}
       </div>
+
+      {/* Content Hit Rate Section */}
+      {hitRateData.chartData.length > 0 && (
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">Content Hit Rate by Creator</h3>
+            <p className="text-xs text-slate-500">Percentage of posts with ROI &gt; 1 per month — tracks content quality over time</p>
+          </div>
+        </div>
+
+        {/* Chart */}
+        <div className="h-[280px] mb-5">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={hitRateData.chartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="month" fontSize={11} stroke="#94a3b8" />
+              <YAxis domain={[0, 100]} tickFormatter={v => `${v}%`} fontSize={11} stroke="#94a3b8" />
+              <Tooltip
+                formatter={(value: number, name: string, props: any) => {
+                  const hits = props.payload[`${name}_hits`] ?? 0;
+                  const total = props.payload[`${name}_total`] ?? 0;
+                  return [`${value}% (${hits}/${total} posts)`, name];
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
+              <ReferenceLine y={50} stroke="#94a3b8" strokeDasharray="3 3" label={{ value: '50%', position: 'right', fontSize: 10, fill: '#94a3b8' }} />
+              {hitRateData.creatorNames.map((name, i) => (
+                <Line key={name} type="monotone" dataKey={name} stroke={PALETTE[i % PALETTE.length]} strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Summary Table */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase">
+                <th className="text-left py-2 px-3 font-semibold">Creator</th>
+                <th className="text-center py-2 px-3 font-semibold">This Month</th>
+                <th className="text-center py-2 px-3 font-semibold">Last Month</th>
+                <th className="text-center py-2 px-3 font-semibold">Trend</th>
+                <th className="text-center py-2 px-3 font-semibold">All-Time</th>
+                <th className="text-center py-2 px-3 font-semibold">Total Posts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hitRateData.summary.map((s, i) => {
+                const trend = s.curRate !== null && s.prevRate !== null ? s.curRate - s.prevRate : null;
+                return (
+                  <tr key={s.creator} className={i % 2 === 0 ? 'bg-slate-50/50' : ''}>
+                    <td className="py-2 px-3 font-medium text-slate-800">{s.creator}</td>
+                    <td className="py-2 px-3 text-center">
+                      {s.curRate !== null
+                        ? <span className={`font-bold ${s.curRate >= 50 ? 'text-green-600' : s.curRate >= 25 ? 'text-amber-600' : 'text-red-500'}`}>{s.curRate.toFixed(0)}%</span>
+                        : <span className="text-slate-400">-</span>}
+                      {s.curTotal > 0 && <span className="text-[10px] text-slate-400 ml-1">({s.curHits}/{s.curTotal})</span>}
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      {s.prevRate !== null
+                        ? <span className="font-medium text-slate-600">{s.prevRate.toFixed(0)}%</span>
+                        : <span className="text-slate-400">-</span>}
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      {trend !== null ? (
+                        <span className={`inline-flex items-center gap-0.5 text-xs font-bold ${trend > 0 ? 'text-green-600' : trend < 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                          {trend > 0 ? '↑' : trend < 0 ? '↓' : '→'} {Math.abs(trend).toFixed(0)}pp
+                        </span>
+                      ) : <span className="text-slate-400">-</span>}
+                    </td>
+                    <td className="py-2 px-3 text-center font-medium text-slate-600">{s.allTimeRate.toFixed(0)}%</td>
+                    <td className="py-2 px-3 text-center text-slate-500">{s.allTotal}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
 
       {/* 3. Latest Daily Snapshot & Budget Matrix */}
       {latestDateTimestamp > 0 && (
