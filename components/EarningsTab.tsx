@@ -79,7 +79,12 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
 
   const { startDate, endDate } = useMemo(() => {
     if (timePreset === 'custom' && customStartDate && customEndDate) {
-      return { startDate: new Date(customStartDate), endDate: new Date(customEndDate) };
+      const [sy, sm, sd] = customStartDate.split('-').map(Number);
+      const [ey, em, ed] = customEndDate.split('-').map(Number);
+      return {
+        startDate: new Date(sy, sm - 1, sd, 0, 0, 0, 0),
+        endDate: new Date(ey, em - 1, ed, 23, 59, 59, 999),
+      };
     }
     const range = getDateRangeForPreset(timePreset);
     return { startDate: range.start, endDate: range.end };
@@ -158,7 +163,15 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
 
   const handlePresetChange = (preset: TimeRangePreset) => {
     setTimePreset(preset);
-    if (preset !== 'custom') { setCustomStartDate(''); setCustomEndDate(''); }
+    if (preset === 'custom') {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      setCustomStartDate(formatDateInput(firstDay));
+      setCustomEndDate(formatDateInput(now));
+    } else {
+      setCustomStartDate('');
+      setCustomEndDate('');
+    }
   };
 
   const formatCurrency = (value: number): string => {
@@ -195,6 +208,8 @@ export const EarningsTab: React.FC<EarningsTabProps> = ({ adData, bonusCalData, 
                 onChange={(e) => handlePresetChange(e.target.value as TimeRangePreset)}
                 className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-10 text-sm font-medium text-slate-700 shadow-sm cursor-pointer hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
+                <option value="this_week">This Week</option>
+                <option value="last_week">Last Week</option>
                 <option value="this_month">This Month</option>
                 <option value="last_month">Last Month</option>
                 <option value="this_quarter">This Quarter</option>
