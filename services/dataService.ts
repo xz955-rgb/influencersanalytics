@@ -783,9 +783,11 @@ export const calculateCreatorSettlements = (
           organicTierBonus = calculateTierBonus(bc.shippedRevOrganic, bc.tiers);
         }
       } else {
-        const bc = latestBonusCalByCreator.get(creatorName);
-        commissionEarning = bc ? bc.commissionAds : adInfo.earning;
-        const est = estimateMonthBonus(creatorName, periodMonth, true);
+        // Use month-specific BonusCal first, then latest as fallback
+        const monthBc = bonusCalByKey.get(`${creatorName}|${periodMonth}`);
+        const bc = monthBc || latestBonusCalByCreator.get(creatorName);
+        commissionEarning = monthBc ? monthBc.commissionAds : (bc ? bc.commissionAds : adInfo.earning);
+        const est = estimateMonthBonus(creatorName, periodMonth, !monthBc);
         bonusAmount = est.bonus;
         projectedTotalTierBonus = est.projTier;
         organicTierBonus = est.orgTier;
