@@ -718,7 +718,8 @@ export const calculateCreatorSettlements = (
     let organicTierBonus = 0;
     let bonusMonthlyBreakdown: { month: string; bonus: number; isEstimated: boolean }[] | undefined;
 
-    // Helper: compute how many days of a given month fall within [startDate, endDate]
+    // Helper: compute how many days of a given month fall within [rangeStart, rangeEnd]
+    // rangeStart is at 00:00:00, rangeEnd is at 23:59:59.999
     const daysOfMonthInRange = (monthStr: string): { daysInRange: number; totalDays: number } => {
       const [y, m] = monthStr.split('-').map(Number);
       const monthStart = new Date(y, m - 1, 1);
@@ -726,10 +727,9 @@ export const calculateCreatorSettlements = (
       const monthEnd = new Date(y, m - 1, totalDays, 23, 59, 59, 999);
       const overlapStart = rangeStart > monthStart ? rangeStart : monthStart;
       const overlapEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd;
-      const daysInRange = overlapStart <= overlapEnd
-        ? Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
-        : 0;
-      return { daysInRange, totalDays };
+      if (overlapStart > overlapEnd) return { daysInRange: 0, totalDays };
+      const daysInRange = Math.round((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24));
+      return { daysInRange: Math.max(1, daysInRange), totalDays };
     };
 
     // Determine if this is a full-month multi-month period (e.g. quarter) vs partial (e.g. week spanning 2 months)
