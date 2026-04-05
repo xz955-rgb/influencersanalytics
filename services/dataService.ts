@@ -684,7 +684,8 @@ export const calculateCreatorSettlements = (
   });
 
   // Helper: compute estimated bonus diff for a single month for a creator
-  // allowFallback: only true for current/single month — prevents using latest data for past months where creator wasn't active
+  // For current month: project revenue to end-of-month, then look up tier
+  // For past months: use raw revenue from BonusCal (if available)
   const estimateMonthBonus = (creatorName: string, month: string, allowFallback: boolean): { bonus: number; projTier: number; orgTier: number } => {
     const exactMatch = bonusCalByKey.get(`${creatorName}|${month}`);
     const bc = exactMatch || (allowFallback ? latestBonusCalByCreator.get(creatorName) : undefined);
@@ -693,8 +694,9 @@ export const calculateCreatorSettlements = (
     let sales = bc.totalShippedRevenue;
     let organic = bc.shippedRevOrganic;
 
-    // Project both sales and organic if this is the current month data
-    if (bc.dataMonth === currentMonthStr) {
+    // Project if estimating for the current month (regardless of which month the data is from)
+    const isEstimatingCurrentMonth = month === currentMonthStr;
+    if (isEstimatingCurrentMonth) {
       const daysSoFar = Math.max(1, bc.dataDay || now.getDate());
       const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       sales = (sales / daysSoFar) * totalDays;
@@ -703,6 +705,9 @@ export const calculateCreatorSettlements = (
 
     const projTier = calculateTierBonus(sales, bc.tiers);
     const orgTier = calculateTierBonus(organic, bc.tiers);
+
+    console.log(`[BonusEst] ${creatorName} | month=${month} | bcMonth=${bc.dataMonth} | dataDay=${bc.dataDay} | projected=${isEstimatingCurrentMonth} | sales=${sales.toFixed(0)} | organic=${organic.toFixed(0)} | projTier=${projTier} | orgTier=${orgTier} | diff=${projTier - orgTier}`);
+
     return { bonus: projTier - orgTier, projTier, orgTier };
   };
 
@@ -808,7 +813,10 @@ export const calculateCreatorSettlements = (
 
     } else if (isMonthlyPeriod) {
       // ---- SINGLE MONTH path ----
-      const actualRow = monthlyEarningData.find(d => d.creatorName === creatorName && d.month === periodMonth);
+      // For current month: always estimate. Monthly Earning Cal only has finalized past-month data.
+      const actualRow = periodMonth === currentMonthStr
+        ? undefined
+        : monthlyEarningData.find(d => d.creatorName === creatorName && d.month === periodMonth);
       if (actualRow) {
         commissionEarning = actualRow.commission;
         bonusAmount = actualRow.bonus;
