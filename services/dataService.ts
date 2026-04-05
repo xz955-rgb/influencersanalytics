@@ -718,6 +718,24 @@ export const calculateCreatorSettlements = (
     let organicTierBonus = 0;
     let bonusMonthlyBreakdown: { month: string; bonus: number; isEstimated: boolean }[] | undefined;
 
+    // Helper: compute how many days of a given month fall within [startDate, endDate]
+    const daysOfMonthInRange = (monthStr: string): { daysInRange: number; totalDays: number } => {
+      const [y, m] = monthStr.split('-').map(Number);
+      const monthStart = new Date(y, m - 1, 1);
+      const totalDays = new Date(y, m, 0).getDate();
+      const monthEnd = new Date(y, m - 1, totalDays, 23, 59, 59, 999);
+      const overlapStart = rangeStart > monthStart ? rangeStart : monthStart;
+      const overlapEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd;
+      const daysInRange = overlapStart <= overlapEnd
+        ? Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        : 0;
+      return { daysInRange, totalDays };
+    };
+
+    // Determine if this is a full-month multi-month period (e.g. quarter) vs partial (e.g. week spanning 2 months)
+    const isFullMonthRange = isMonthlyPeriod ||
+      (startDate.getDate() === 1 && periodDays >= 28);
+
     if (spansMultipleMonths && !isMonthlyPeriod) {
       // ---- MULTI-MONTH path: aggregate per month ----
       let totalCommission = 0;
@@ -728,12 +746,22 @@ export const calculateCreatorSettlements = (
       bonusMonthlyBreakdown = [];
 
       for (const month of monthsInRange) {
+        const { daysInRange: daysInMonth_range, totalDays: totalDaysInMonth } = daysOfMonthInRange(month);
+        const monthRatio = daysInMonth_range / totalDaysInMonth;
+
         const actualRow = monthlyEarningData.find(d => d.creatorName === creatorName && d.month === month);
         if (actualRow) {
           anyActual = true;
-          totalCommission += actualRow.commission;
-          totalBonus += actualRow.bonus;
-          bonusMonthlyBreakdown.push({ month, bonus: actualRow.bonus, isEstimated: false });
+          if (isFullMonthRange) {
+            totalCommission += actualRow.commission;
+            totalBonus += actualRow.bonus;
+            bonusMonthlyBreakdown.push({ month, bonus: actualRow.bonus, isEstimated: false });
+          } else {
+            totalCommission += actualRow.commission * monthRatio;
+            const proratedBonus = actualRow.bonus * monthRatio;
+            totalBonus += proratedBonus;
+            bonusMonthlyBreakdown.push({ month, bonus: proratedBonus, isEstimated: false });
+          }
           const bc = bonusCalByKey.get(`${creatorName}|${month}`);
           if (bc && bc.tiers.length > 0) {
             totalProjTier += calculateTierBonus(bc.totalShippedRevenue, bc.tiers);
@@ -742,12 +770,20 @@ export const calculateCreatorSettlements = (
         } else {
           const isCurrentMonth = month === currentMonthStr;
           const est = estimateMonthBonus(creatorName, month, isCurrentMonth);
-          totalBonus += est.bonus;
+          if (isFullMonthRange) {
+            totalBonus += est.bonus;
+            if (est.bonus !== 0) {
+              bonusMonthlyBreakdown.push({ month, bonus: est.bonus, isEstimated: true });
+            }
+          } else {
+            const proratedBonus = est.bonus * monthRatio;
+            totalBonus += proratedBonus;
+            if (proratedBonus !== 0) {
+              bonusMonthlyBreakdown.push({ month, bonus: proratedBonus, isEstimated: true });
+            }
+          }
           totalProjTier += est.projTier;
           totalOrgTier += est.orgTier;
-          if (est.bonus !== 0) {
-            bonusMonthlyBreakdown.push({ month, bonus: est.bonus, isEstimated: true });
-          }
         }
       }
 
