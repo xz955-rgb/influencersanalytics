@@ -78,12 +78,16 @@ export interface RushAnalysis {
 export interface TierProgress {
   creatorName: string;
   currentRevenue: number;
+  projectedRevenue: number;
   currentTier: TierLevel | null;
   currentBonus: number;
+  maxTier: TierLevel | null;
   nextTier: TierLevel | null;
+  gapToMaxTier: number;
   gapToNextTier: number;
   daysRemaining: number;
   dailyGmvNeeded: number;
+  isOnTrack: boolean;
   rushAnalysis: RushAnalysis | null;
 }
 

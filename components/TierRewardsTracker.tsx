@@ -128,13 +128,18 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
   }, [adData, isCurrentMonth]);
 
   const tierProgressList = useMemo((): TierProgress[] => {
+    const now = new Date();
+    const daysSoFar = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
     return filteredTierData.map(creator => {
       const { creatorName, currentShippedRevenue, tiers } = creator;
       const sortedTiers = [...tiers].sort((a, b) => a.threshold - b.threshold);
-      
+      const maxTier = sortedTiers.length > 0 ? sortedTiers[sortedTiers.length - 1] : null;
+
       let currentTier: TierLevel | null = null;
       let nextTier: TierLevel | null = null;
-      
+
       for (let i = sortedTiers.length - 1; i >= 0; i--) {
         if (currentShippedRevenue >= sortedTiers[i].threshold) {
           currentTier = sortedTiers[i];
@@ -142,48 +147,58 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
           break;
         }
       }
-      
+
       if (!currentTier && sortedTiers.length > 0) {
         nextTier = sortedTiers[0];
       }
-      
+
       const currentBonus = currentTier?.bonus || 0;
+
+      // Project revenue to end of month
+      const projectedRevenue = isCurrentMonth && daysSoFar > 0
+        ? (currentShippedRevenue / daysSoFar) * daysInMonth
+        : currentShippedRevenue;
+
+      // Goal is always the max tier
+      const gapToMaxTier = maxTier ? Math.max(0, maxTier.threshold - currentShippedRevenue) : 0;
       const gapToNextTier = nextTier ? nextTier.threshold - currentShippedRevenue : 0;
-      const dailyGmvNeeded = nextTier && daysRemaining > 0 ? gapToNextTier / daysRemaining : 0;
-      
-      // Calculate rush analysis only for current month (forward-looking)
+      const dailyGmvNeeded = maxTier && daysRemaining > 0 ? gapToMaxTier / daysRemaining : 0;
+      const isOnTrack = maxTier ? projectedRevenue >= maxTier.threshold : true;
+
+      // Rush analysis: how to reach max tier
       let rushAnalysis: RushAnalysis | null = null;
-      
-      if (nextTier && gapToNextTier > 0 && isCurrentMonth) {
+
+      if (maxTier && gapToMaxTier > 0 && isCurrentMonth) {
         const posts = postEfficiencyByCreator.get(creatorName) || [];
-        
+
         if (posts.length > 0) {
           const totalSpend = posts.reduce((sum, p) => sum + p.totalSpend, 0);
           const totalGmv = posts.reduce((sum, p) => sum + p.totalGmv, 0);
           const totalEarning = posts.reduce((sum, p) => sum + p.totalEarning, 0);
-          
+
           const avgRoas = totalSpend > 0 ? totalGmv / totalSpend : 0;
           const avgRoi = totalSpend > 0 ? totalEarning / totalSpend : 0;
-          
+
           if (avgRoas > 0) {
-            const estimatedExtraSpend = gapToNextTier / avgRoas;
-            const extraBonus = nextTier.bonus - currentBonus;
+            const estimatedExtraSpend = gapToMaxTier / avgRoas;
+            const extraBonus = maxTier.bonus - currentBonus;
             const extraCost = estimatedExtraSpend * (1 - avgRoi);
             const netGain = extraBonus - extraCost;
-            
+
             let recommendation: 'rush' | 'consider' | 'skip';
             if (netGain > 0) recommendation = 'rush';
             else if (netGain > -extraBonus * 0.5) recommendation = 'consider';
             else recommendation = 'skip';
-            
+
             rushAnalysis = { estimatedExtraSpend, netGain, recommendation, avgRoas, avgRoi, posts };
           }
         }
       }
-      
+
       return {
-        creatorName, currentRevenue: currentShippedRevenue, currentTier, currentBonus,
-        nextTier, gapToNextTier, daysRemaining, dailyGmvNeeded, rushAnalysis,
+        creatorName, currentRevenue: currentShippedRevenue, projectedRevenue,
+        currentTier, currentBonus, maxTier, nextTier,
+        gapToMaxTier, gapToNextTier, daysRemaining, dailyGmvNeeded, isOnTrack, rushAnalysis,
       };
     });
   }, [filteredTierData, daysRemaining, postEfficiencyByCreator, isCurrentMonth]);
@@ -321,7 +336,7 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
 interface RevenueBreakdown { total: number; organic: number; ads: number }
 
 const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; daysRemaining: number; isCurrentMonth: boolean; revenueBreakdown: RevenueBreakdown | null }> = ({ progress, tiers, daysRemaining, isCurrentMonth, revenueBreakdown }) => {
-  const { currentRevenue, currentTier, currentBonus, nextTier, gapToNextTier, dailyGmvNeeded, rushAnalysis } = progress;
+  const { currentRevenue, projectedRevenue, currentTier, currentBonus, maxTier, nextTier, gapToMaxTier, dailyGmvNeeded, isOnTrack, rushAnalysis } = progress;
 
   const sortedTiers = [...tiers].sort((a, b) => a.threshold - b.threshold);
   const maxThreshold = sortedTiers.length > 0 ? sortedTiers[sortedTiers.length - 1].threshold : currentRevenue;
@@ -387,34 +402,48 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
         </div>
       </div>
 
+      {/* On-Track Status (current month only) */}
+      {isCurrentMonth && maxTier && (
+        <div className={`mb-4 flex items-center gap-2 px-3 py-2 rounded-lg border ${isOnTrack ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+          {isOnTrack
+            ? <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+            : <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />}
+          <span className={`text-sm font-semibold ${isOnTrack ? 'text-green-700' : 'text-red-600'}`}>
+            {isOnTrack ? 'On Track' : 'Off Track'} for {maxTier.name}
+          </span>
+          <span className="text-xs text-slate-500 ml-auto">
+            Projected: ${projectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })} / Target: ${maxTier.threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </span>
+        </div>
+      )}
+
       {/* Stats - Overview */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {isCurrentMonth ? (
-          // Current month: show gap, daily needed, and next tier bonus
-          nextTier ? (
+          maxTier && gapToMaxTier > 0 ? (
             <>
               <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 text-center">
-                <div className="text-xs text-slate-500 mb-1">Gap to {nextTier.name}</div>
-                <div className="text-xl font-bold text-orange-600">${gapToNextTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-xs text-slate-500 mb-1">Gap to {maxTier.name}</div>
+                <div className="text-xl font-bold text-orange-600">${gapToMaxTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 text-center">
                 <div className="text-xs text-slate-500 mb-1">Daily Sales Needed</div>
                 <div className="text-xl font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-[10px] text-slate-400">{daysRemaining} days left</div>
               </div>
               <div className="bg-purple-50 rounded-lg p-3 border border-purple-100 text-center">
-                <div className="text-xs text-slate-500 mb-1">Next Tier Bonus</div>
-                <div className="text-xl font-bold text-purple-600">${nextTier.bonus.toLocaleString()}</div>
+                <div className="text-xs text-slate-500 mb-1">Max Tier Bonus</div>
+                <div className="text-xl font-bold text-purple-600">${maxTier.bonus.toLocaleString()}</div>
                 <div className="text-[10px] text-slate-400">Current: ${currentBonus.toLocaleString()}</div>
               </div>
             </>
           ) : (
             <div className="col-span-3 bg-green-50 rounded-lg p-3 border border-green-200 flex items-center justify-center">
               <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-              <span className="text-green-700 font-semibold">Maximum Tier Achieved! Current Bonus: ${currentBonus.toLocaleString()}</span>
+              <span className="text-green-700 font-semibold">Maximum Tier Achieved! Bonus: ${currentBonus.toLocaleString()}</span>
             </div>
           )
         ) : (
-          // Historical month: show final results
           <>
             <div className="bg-green-50 rounded-lg p-3 border border-green-100 text-center">
               <div className="text-xs text-slate-500 mb-1">Final Tier</div>
@@ -433,8 +462,8 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
       </div>
 
       {/* Rush analysis only shown for current month */}
-      {isCurrentMonth && rushAnalysis && nextTier && (
-        <RushAnalysisPanel analysis={rushAnalysis} bonusIncrease={nextTier.bonus - currentBonus} gapToNextTier={gapToNextTier} daysRemaining={daysRemaining} />
+      {isCurrentMonth && rushAnalysis && maxTier && gapToMaxTier > 0 && (
+        <RushAnalysisPanel analysis={rushAnalysis} bonusIncrease={maxTier.bonus - currentBonus} gapToNextTier={gapToMaxTier} daysRemaining={daysRemaining} />
       )}
     </div>
   );
