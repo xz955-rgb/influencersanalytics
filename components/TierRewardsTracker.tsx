@@ -400,157 +400,113 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
   const organicPct = revenueBreakdown && revenueBreakdown.total > 0
     ? (revenueBreakdown.organic / revenueBreakdown.total) * 100 : 0;
 
+  const fmtK = (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const fmt = (v: number) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
   return (
     <div className="bg-white rounded-lg border border-amber-100 shadow-sm p-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Header: name + revenue + on-track badge */}
+      <div className="flex items-center justify-between mb-2">
         <div>
-          <h4 className="font-semibold text-slate-800">{progress.creatorName}</h4>
-          <p className="text-xs text-slate-500">{currentTier ? `${currentTier.name} Achieved` : 'No tier reached yet'}</p>
+          <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+            {progress.creatorName}
+            {isCurrentMonth && maxTier && (
+              <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${isOnTrack ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                {isOnTrack ? <CheckCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                {isOnTrack ? 'On Track' : 'Off Track'}
+              </span>
+            )}
+          </h4>
+          <p className="text-xs text-slate-500">
+            {currentTier ? `${currentTier.name} — ${fmt(currentBonus)} bonus` : 'No tier reached yet'}
+            {revenueBreakdown && revenueBreakdown.total > 0 && (
+              <span className="ml-2 text-slate-400">
+                (Ads {fmtK(revenueBreakdown.ads)} · Organic {fmtK(revenueBreakdown.organic)})
+              </span>
+            )}
+          </p>
         </div>
         <div className="text-right">
-          <div className="text-xl font-bold text-amber-600">${currentRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-          <div className="text-xs text-slate-500">Current Shipped Revenue</div>
+          <div className="text-xl font-bold text-amber-600">{fmtK(currentRevenue)}</div>
+          {isCurrentMonth && maxTier && (
+            <div className="text-[10px] text-slate-400">Proj. {fmtK(projectedRevenue)} / {fmtK(maxTier.threshold)}</div>
+          )}
         </div>
       </div>
 
-      {/* Ads vs Organic Revenue Breakdown */}
-      {revenueBreakdown && revenueBreakdown.total > 0 && (
-        <div className="mb-4 bg-slate-50 rounded-lg p-3 border border-slate-100">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-600">Revenue Breakdown</span>
-            <div className="flex items-center gap-3 text-[10px]">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" /> Ads {adsPct.toFixed(1)}%</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Organic {organicPct.toFixed(1)}%</span>
-            </div>
-          </div>
-          <div className="h-3 rounded-full overflow-hidden flex bg-slate-200">
-            <div className="bg-indigo-500 transition-all" style={{ width: `${adsPct}%` }} />
-            <div className="bg-emerald-500 transition-all" style={{ width: `${organicPct}%` }} />
-          </div>
-          <div className="flex justify-between mt-1.5 text-[10px] text-slate-500">
-            <span>Ads: ${revenueBreakdown.ads.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-            <span>Organic: ${revenueBreakdown.organic.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Progress Bar */}
-      <div className="mb-4">
-        <div className="h-5 bg-amber-100 rounded-full overflow-hidden relative">
+      {/* Progress Bar — compact */}
+      <div className="mb-3">
+        <div className="h-4 bg-amber-100 rounded-full overflow-hidden relative">
           <div className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full" style={{ width: `${Math.min(100, progressPercent)}%` }} />
           {sortedTiers.map((tier) => (
-            <div key={tier.name} className={`absolute top-0 h-full w-0.5 ${currentRevenue >= tier.threshold ? 'bg-green-600' : 'bg-amber-600'}`}
+            <div key={tier.name} className={`absolute top-0 h-full w-0.5 ${currentRevenue >= tier.threshold ? 'bg-green-600' : 'bg-amber-600/40'}`}
               style={{ left: `${maxThreshold > 0 ? (tier.threshold / maxThreshold) * 100 : 0}%` }} />
           ))}
         </div>
-        <div className="relative h-4 mt-1">
+        <div className="relative h-3 mt-0.5">
           {sortedTiers.map((tier) => (
             <span key={tier.name}
-              className={`absolute text-[10px] -translate-x-1/2 ${currentRevenue >= tier.threshold ? 'text-green-600 font-semibold' : 'text-slate-400'}`}
+              className={`absolute text-[9px] -translate-x-1/2 ${currentRevenue >= tier.threshold ? 'text-green-600 font-semibold' : 'text-slate-400'}`}
               style={{ left: `${maxThreshold > 0 ? (tier.threshold / maxThreshold) * 100 : 0}%` }}>
-              {tier.name}: ${(tier.threshold / 1000).toFixed(0)}K
+              {tier.name}: {fmtK(tier.threshold)}
             </span>
           ))}
         </div>
       </div>
 
-      {/* On-Track Status (current month only) */}
-      {isCurrentMonth && maxTier && (
-        <div className={`mb-4 flex items-center gap-2 px-3 py-2 rounded-lg border ${isOnTrack ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-          {isOnTrack
-            ? <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-            : <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-          <span className={`text-sm font-semibold ${isOnTrack ? 'text-green-700' : 'text-red-600'}`}>
-            {isOnTrack ? 'On Track' : 'Off Track'} for {maxTier.name}
-          </span>
-          <span className="text-xs text-slate-500 ml-auto">
-            Projected: ${projectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })} / Target: ${maxTier.threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </span>
-        </div>
-      )}
-
-      {/* Stats - Overview */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
-        {isCurrentMonth ? (
-          maxTier && gapToMaxTier > 0 ? (
-            <>
-              <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 text-center">
-                <div className="text-xs text-slate-500 mb-1">Gap to {maxTier.name}</div>
-                <div className="text-lg font-bold text-orange-600">${gapToMaxTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                <div className="text-[10px] text-slate-400">{daysRemaining} days left</div>
-              </div>
-              <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 text-center">
-                <div className="text-xs text-slate-500 mb-1">Daily Sales Needed</div>
-                <div className="text-lg font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                <div className="text-[10px] text-slate-400">to reach {maxTier.name}</div>
-              </div>
-              <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100 text-center">
-                <div className="text-xs text-slate-500 mb-1">Current Daily Pace</div>
-                <div className="text-lg font-bold text-indigo-600">${currentDailyTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                <div className="text-[10px] text-slate-400">
-                  Organic ${dailyOrganicSales.toLocaleString(undefined, { maximumFractionDigits: 0 })} + Boost ${dailyBoostSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </div>
-              </div>
-              <div className={`rounded-lg p-3 border text-center ${extraDailyAdsNeeded > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
-                <div className="text-xs text-slate-500 mb-1">Extra Daily Ads Needed</div>
-                <div className={`text-lg font-bold ${extraDailyAdsNeeded > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {extraDailyAdsNeeded > 0 ? `$${extraDailyAdsNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : 'On Pace'}
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  {extraDailyAdsNeeded > 0 ? 'gap per day via ads' : 'no extra ads needed'}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="col-span-4 bg-green-50 rounded-lg p-3 border border-green-200 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-              <span className="text-green-700 font-semibold">Maximum Tier Achieved! Bonus: ${currentBonus.toLocaleString()}</span>
+      {/* Key Metrics */}
+      {isCurrentMonth ? (
+        maxTier && gapToMaxTier > 0 ? (
+          <div className="grid grid-cols-4 gap-2 text-center text-xs">
+            <div className="bg-orange-50 rounded-lg px-2 py-2 border border-orange-100">
+              <div className="text-slate-500 mb-0.5">Gap to {maxTier.name}</div>
+              <div className="text-sm font-bold text-orange-600">{fmtK(gapToMaxTier)}</div>
+              <div className="text-[10px] text-slate-400">{daysRemaining}d left</div>
             </div>
-          )
-        ) : (
-          <>
-            <div className="bg-green-50 rounded-lg p-3 border border-green-100 text-center">
-              <div className="text-xs text-slate-500 mb-1">Final Tier</div>
-              <div className="text-lg font-bold text-green-600">{currentTier?.name || 'None'}</div>
+            <div className="bg-blue-50 rounded-lg px-2 py-2 border border-blue-100">
+              <div className="text-slate-500 mb-0.5">Daily Needed</div>
+              <div className="text-sm font-bold text-blue-600">{fmt(dailyGmvNeeded)}</div>
             </div>
-            <div className="bg-amber-50 rounded-lg p-3 border border-amber-100 text-center">
-              <div className="text-xs text-slate-500 mb-1">Final Bonus</div>
-              <div className="text-lg font-bold text-amber-600">${currentBonus.toLocaleString()}</div>
+            <div className="bg-slate-50 rounded-lg px-2 py-2 border border-slate-100">
+              <div className="text-slate-500 mb-0.5">Current Pace</div>
+              <div className="text-sm font-bold text-indigo-600">{fmt(currentDailyTotal)}</div>
+              <div className="text-[10px] text-slate-400">Org {fmt(dailyOrganicSales)} + Ads {fmt(dailyBoostSales)}</div>
             </div>
-            <div className="col-span-2 bg-slate-50 rounded-lg p-3 border border-slate-200 text-center">
-              <div className="text-xs text-slate-500 mb-1">Final Revenue</div>
-              <div className="text-lg font-bold text-slate-600">${currentRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className={`rounded-lg px-2 py-2 border ${extraDailyAdsNeeded > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+              <div className="text-slate-500 mb-0.5">Extra Ads/Day</div>
+              <div className={`text-sm font-bold ${extraDailyAdsNeeded > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {extraDailyAdsNeeded > 0 ? fmt(extraDailyAdsNeeded) : 'On Pace'}
+              </div>
             </div>
-          </>
-        )}
-      </div>
-
-      {/* Daily Sales Breakdown (current month, not yet at max tier) */}
-      {isCurrentMonth && maxTier && gapToMaxTier > 0 && (
-        <div className="mb-4 bg-slate-50 rounded-lg p-3 border border-slate-100">
-          <div className="text-xs font-semibold text-slate-600 mb-2">Daily Sales Breakdown</div>
-          <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden bg-slate-200 mb-2">
-            {dailyGmvNeeded > 0 && (
-              <>
-                <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(100, (dailyOrganicSales / dailyGmvNeeded) * 100)}%` }} title="Organic" />
-                <div className="bg-indigo-500 h-full transition-all" style={{ width: `${Math.min(100 - (dailyOrganicSales / dailyGmvNeeded) * 100, (dailyBoostSales / dailyGmvNeeded) * 100)}%` }} title="Boost (Ads)" />
-              </>
-            )}
           </div>
-          <div className="flex justify-between text-[10px] text-slate-500">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Organic: ${dailyOrganicSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}/day</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" /> Boost: ${dailyBoostSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}/day (5d avg)</span>
-            {extraDailyAdsNeeded > 0 && (
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Gap: ${extraDailyAdsNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}/day</span>
-            )}
+        ) : (
+          <div className="bg-green-50 rounded-lg px-3 py-2 border border-green-200 flex items-center justify-center gap-2 text-sm">
+            <CheckCircle className="w-4 h-4 text-green-600" />
+            <span className="text-green-700 font-semibold">Max Tier Achieved — Bonus: {fmt(currentBonus)}</span>
+          </div>
+        )
+      ) : (
+        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="bg-green-50 rounded-lg px-2 py-2 border border-green-100">
+            <div className="text-slate-500">Final Tier</div>
+            <div className="text-sm font-bold text-green-600">{currentTier?.name || 'None'}</div>
+          </div>
+          <div className="bg-amber-50 rounded-lg px-2 py-2 border border-amber-100">
+            <div className="text-slate-500">Final Bonus</div>
+            <div className="text-sm font-bold text-amber-600">{fmt(currentBonus)}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg px-2 py-2 border border-slate-200">
+            <div className="text-slate-500">Revenue</div>
+            <div className="text-sm font-bold text-slate-600">{fmtK(currentRevenue)}</div>
           </div>
         </div>
       )}
 
       {/* Rush analysis only shown for current month */}
       {isCurrentMonth && rushAnalysis && maxTier && gapToMaxTier > 0 && (
-        <RushAnalysisPanel analysis={rushAnalysis} bonusIncrease={maxTier.bonus - currentBonus} gapToNextTier={gapToMaxTier} daysRemaining={daysRemaining} />
+        <div className="mt-3">
+          <RushAnalysisPanel analysis={rushAnalysis} bonusIncrease={maxTier.bonus - currentBonus} gapToNextTier={gapToMaxTier} daysRemaining={daysRemaining} />
+        </div>
       )}
     </div>
   );
