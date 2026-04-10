@@ -87,6 +87,10 @@ export interface TierProgress {
   gapToNextTier: number;
   daysRemaining: number;
   dailyGmvNeeded: number;
+  dailyOrganicSales: number;
+  dailyBoostSales: number;
+  currentDailyTotal: number;
+  extraDailyAdsNeeded: number;
   isOnTrack: boolean;
   rushAnalysis: RushAnalysis | null;
 }

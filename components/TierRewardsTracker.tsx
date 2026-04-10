@@ -127,6 +127,50 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
     return result;
   }, [adData, isCurrentMonth]);
 
+  // Pre-compute per-creator daily boost sales from ad data (last 5 days avg GMV)
+  const boostDailyByCreator = useMemo(() => {
+    const result = new Map<string, number>();
+    if (!isCurrentMonth) return result;
+
+    const allDates = adData.map(d => d.date.getTime());
+    if (allDates.length === 0) return result;
+    const latestDate = Math.max(...allDates);
+    const fiveDaysAgo = latestDate - (5 * 24 * 60 * 60 * 1000);
+
+    const creatorGmv = new Map<string, { total: number; days: Set<string> }>();
+    adData.forEach(d => {
+      if (d.date.getTime() < fiveDaysAgo) return;
+      const entry = creatorGmv.get(d.creatorName) || { total: 0, days: new Set<string>() };
+      entry.total += d.gmv;
+      entry.days.add(d.date.toISOString().split('T')[0]);
+      creatorGmv.set(d.creatorName, entry);
+    });
+
+    creatorGmv.forEach((v, name) => {
+      const days = Math.max(1, v.days.size);
+      result.set(name, v.total / days);
+    });
+    return result;
+  }, [adData, isCurrentMonth]);
+
+  // Pre-compute per-creator daily organic sales from BonusCal (latest entry per creator)
+  const organicDailyByCreator = useMemo(() => {
+    const result = new Map<string, number>();
+    if (!isCurrentMonth) return result;
+
+    const latestMonth = new Map<string, string>();
+    bonusCalData.forEach(bc => {
+      if (bc.dataDay > 0 && bc.shippedRevOrganic > 0) {
+        const prev = latestMonth.get(bc.creatorName) || '';
+        if (bc.dataMonth >= prev) {
+          latestMonth.set(bc.creatorName, bc.dataMonth);
+          result.set(bc.creatorName, bc.shippedRevOrganic / bc.dataDay);
+        }
+      }
+    });
+    return result;
+  }, [bonusCalData, isCurrentMonth]);
+
   const tierProgressList = useMemo((): TierProgress[] => {
     const now = new Date();
     const daysSoFar = now.getDate();
@@ -163,6 +207,13 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
       const gapToMaxTier = maxTier ? Math.max(0, maxTier.threshold - currentShippedRevenue) : 0;
       const gapToNextTier = nextTier ? nextTier.threshold - currentShippedRevenue : 0;
       const dailyGmvNeeded = maxTier && daysRemaining > 0 ? gapToMaxTier / daysRemaining : 0;
+
+      // Daily organic (from BonusCal) + daily boost (from adData last 5 days)
+      const dailyOrganicSales = organicDailyByCreator.get(creatorName) || 0;
+      const dailyBoostSales = boostDailyByCreator.get(creatorName) || 0;
+      const currentDailyTotal = dailyOrganicSales + dailyBoostSales;
+      const extraDailyAdsNeeded = Math.max(0, dailyGmvNeeded - currentDailyTotal);
+
       const isOnTrack = maxTier ? projectedRevenue >= maxTier.threshold : true;
 
       // Rush analysis: how to reach max tier
@@ -198,10 +249,12 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
       return {
         creatorName, currentRevenue: currentShippedRevenue, projectedRevenue,
         currentTier, currentBonus, maxTier, nextTier,
-        gapToMaxTier, gapToNextTier, daysRemaining, dailyGmvNeeded, isOnTrack, rushAnalysis,
+        gapToMaxTier, gapToNextTier, daysRemaining, dailyGmvNeeded,
+        dailyOrganicSales, dailyBoostSales, currentDailyTotal, extraDailyAdsNeeded,
+        isOnTrack, rushAnalysis,
       };
     });
-  }, [filteredTierData, daysRemaining, postEfficiencyByCreator, isCurrentMonth]);
+  }, [filteredTierData, daysRemaining, postEfficiencyByCreator, isCurrentMonth, boostDailyByCreator, organicDailyByCreator]);
 
   React.useEffect(() => {
     if (tierProgressList.length > 0 && !selectedCreator) {
@@ -336,7 +389,7 @@ export const TierRewardsTracker: React.FC<TierRewardsTrackerProps> = ({ tierData
 interface RevenueBreakdown { total: number; organic: number; ads: number }
 
 const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; daysRemaining: number; isCurrentMonth: boolean; revenueBreakdown: RevenueBreakdown | null }> = ({ progress, tiers, daysRemaining, isCurrentMonth, revenueBreakdown }) => {
-  const { currentRevenue, projectedRevenue, currentTier, currentBonus, maxTier, nextTier, gapToMaxTier, dailyGmvNeeded, isOnTrack, rushAnalysis } = progress;
+  const { currentRevenue, projectedRevenue, currentTier, currentBonus, maxTier, nextTier, gapToMaxTier, dailyGmvNeeded, dailyOrganicSales, dailyBoostSales, currentDailyTotal, extraDailyAdsNeeded, isOnTrack, rushAnalysis } = progress;
 
   const sortedTiers = [...tiers].sort((a, b) => a.threshold - b.threshold);
   const maxThreshold = sortedTiers.length > 0 ? sortedTiers[sortedTiers.length - 1].threshold : currentRevenue;
@@ -418,27 +471,39 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
       )}
 
       {/* Stats - Overview */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-4 gap-3 mb-4">
         {isCurrentMonth ? (
           maxTier && gapToMaxTier > 0 ? (
             <>
               <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 text-center">
                 <div className="text-xs text-slate-500 mb-1">Gap to {maxTier.name}</div>
-                <div className="text-xl font-bold text-orange-600">${gapToMaxTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-lg font-bold text-orange-600">${gapToMaxTier.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-[10px] text-slate-400">{daysRemaining} days left</div>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 text-center">
                 <div className="text-xs text-slate-500 mb-1">Daily Sales Needed</div>
-                <div className="text-xl font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                <div className="text-[10px] text-slate-400">{daysRemaining} days left</div>
+                <div className="text-lg font-bold text-blue-600">${dailyGmvNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-[10px] text-slate-400">to reach {maxTier.name}</div>
               </div>
-              <div className="bg-purple-50 rounded-lg p-3 border border-purple-100 text-center">
-                <div className="text-xs text-slate-500 mb-1">Max Tier Bonus</div>
-                <div className="text-xl font-bold text-purple-600">${maxTier.bonus.toLocaleString()}</div>
-                <div className="text-[10px] text-slate-400">Current: ${currentBonus.toLocaleString()}</div>
+              <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100 text-center">
+                <div className="text-xs text-slate-500 mb-1">Current Daily Pace</div>
+                <div className="text-lg font-bold text-indigo-600">${currentDailyTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-[10px] text-slate-400">
+                  Organic ${dailyOrganicSales.toLocaleString(undefined, { maximumFractionDigits: 0 })} + Boost ${dailyBoostSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
+              </div>
+              <div className={`rounded-lg p-3 border text-center ${extraDailyAdsNeeded > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                <div className="text-xs text-slate-500 mb-1">Extra Daily Ads Needed</div>
+                <div className={`text-lg font-bold ${extraDailyAdsNeeded > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {extraDailyAdsNeeded > 0 ? `$${extraDailyAdsNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : 'On Pace'}
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  {extraDailyAdsNeeded > 0 ? 'gap per day via ads' : 'no extra ads needed'}
+                </div>
               </div>
             </>
           ) : (
-            <div className="col-span-3 bg-green-50 rounded-lg p-3 border border-green-200 flex items-center justify-center">
+            <div className="col-span-4 bg-green-50 rounded-lg p-3 border border-green-200 flex items-center justify-center">
               <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
               <span className="text-green-700 font-semibold">Maximum Tier Achieved! Bonus: ${currentBonus.toLocaleString()}</span>
             </div>
@@ -447,19 +512,41 @@ const CreatorTierCard: React.FC<{ progress: TierProgress; tiers: TierLevel[]; da
           <>
             <div className="bg-green-50 rounded-lg p-3 border border-green-100 text-center">
               <div className="text-xs text-slate-500 mb-1">Final Tier</div>
-              <div className="text-xl font-bold text-green-600">{currentTier?.name || 'None'}</div>
+              <div className="text-lg font-bold text-green-600">{currentTier?.name || 'None'}</div>
             </div>
             <div className="bg-amber-50 rounded-lg p-3 border border-amber-100 text-center">
               <div className="text-xs text-slate-500 mb-1">Final Bonus</div>
-              <div className="text-xl font-bold text-amber-600">${currentBonus.toLocaleString()}</div>
+              <div className="text-lg font-bold text-amber-600">${currentBonus.toLocaleString()}</div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-center">
+            <div className="col-span-2 bg-slate-50 rounded-lg p-3 border border-slate-200 text-center">
               <div className="text-xs text-slate-500 mb-1">Final Revenue</div>
-              <div className="text-xl font-bold text-slate-600">${currentRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              <div className="text-lg font-bold text-slate-600">${currentRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
             </div>
           </>
         )}
       </div>
+
+      {/* Daily Sales Breakdown (current month, not yet at max tier) */}
+      {isCurrentMonth && maxTier && gapToMaxTier > 0 && (
+        <div className="mb-4 bg-slate-50 rounded-lg p-3 border border-slate-100">
+          <div className="text-xs font-semibold text-slate-600 mb-2">Daily Sales Breakdown</div>
+          <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden bg-slate-200 mb-2">
+            {dailyGmvNeeded > 0 && (
+              <>
+                <div className="bg-emerald-500 h-full transition-all" style={{ width: `${Math.min(100, (dailyOrganicSales / dailyGmvNeeded) * 100)}%` }} title="Organic" />
+                <div className="bg-indigo-500 h-full transition-all" style={{ width: `${Math.min(100 - (dailyOrganicSales / dailyGmvNeeded) * 100, (dailyBoostSales / dailyGmvNeeded) * 100)}%` }} title="Boost (Ads)" />
+              </>
+            )}
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-500">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Organic: ${dailyOrganicSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}/day</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" /> Boost: ${dailyBoostSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}/day (5d avg)</span>
+            {extraDailyAdsNeeded > 0 && (
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Gap: ${extraDailyAdsNeeded.toLocaleString(undefined, { maximumFractionDigits: 0 })}/day</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Rush analysis only shown for current month */}
       {isCurrentMonth && rushAnalysis && maxTier && gapToMaxTier > 0 && (
