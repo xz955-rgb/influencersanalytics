@@ -355,6 +355,7 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     });
 
     // MarginShare lookup
+    const SHARE_OVERRIDES: Record<string, number> = { 'Lisa': 0.325, 'Holly': 0.325, 'Marni': 0.325 };
     const msMap = new Map<string, number>();
     monthlyEarningData.forEach(d => { if (d.marginShare > 0) msMap.set(d.creatorName, d.marginShare); });
 
@@ -407,7 +408,8 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
         // Total Margin: 50% of profit (non-creator share), absorb full loss
         totalMargin += profit > 0 ? 0.5 * profit : profit;
         // AdMee Margin: marginShare% of profit, absorb full loss
-        const ms = msMap.get(creator) ?? 0.35;
+        const nameKey = creator.trim().split(/\s+/)[0];
+        const ms = SHARE_OVERRIDES[creator] ?? SHARE_OVERRIDES[nameKey] ?? msMap.get(creator) ?? 0.35;
         admeeMargin += profit > 0 ? ms * profit : profit;
       });
 

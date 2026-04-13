@@ -713,8 +713,12 @@ export const calculateCreatorSettlements = (
 
   allCreators.forEach(creatorName => {
     const adInfo = creatorAdMap.get(creatorName) || { spend: 0, earning: 0 };
+    const nameKey = creatorName.trim().split(/\s+/)[0];
     const SHARE_OVERRIDES: Record<string, number> = { 'Lisa': 0.325, 'Holly': 0.325, 'Marni': 0.325 };
-    const mShare = SHARE_OVERRIDES[creatorName] ?? marginShareMap.get(creatorName) ?? 0.35;
+    const mShare = SHARE_OVERRIDES[creatorName] ?? SHARE_OVERRIDES[nameKey] ?? marginShareMap.get(creatorName) ?? 0.35;
+    if (['Lisa', 'Holly', 'Marni'].some(n => creatorName.includes(n))) {
+      console.log(`[MarginShare] "${creatorName}" nameKey="${nameKey}" override=${SHARE_OVERRIDES[creatorName]} overrideKey=${SHARE_OVERRIDES[nameKey]} mapVal=${marginShareMap.get(creatorName)} → ${mShare}`);
+    }
     const adSpend = adInfo.spend;
 
     let commissionEarning: number;
