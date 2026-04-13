@@ -409,7 +409,6 @@ export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]>
       shippedRevAds: headers.findIndex(h => h.includes('shipped') && h.includes('ads')),
       commissionOrganic: headers.findIndex(h => h.includes('commission') && h.includes('organic')),
       commissionAds: headers.findIndex(h => h.includes('commission') && h.includes('ads')),
-      bonusDiffEst: headers.findIndex(h => h.includes('bonus') && h.includes('diff') && h.includes('est')),
       tier1Sales: headers.findIndex(h => h.includes('tier-1') && h.includes('sales')),
       tier1Bonus: headers.findIndex(h => h.includes('tier-1') && h.includes('bonus')),
       tier2Sales: headers.findIndex(h => h.includes('tier-2') && h.includes('sales')),
@@ -421,8 +420,6 @@ export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]>
       tier5Sales: headers.findIndex(h => h.includes('tier-5') && h.includes('sales')),
       tier5Bonus: headers.findIndex(h => h.includes('tier-5') && h.includes('bonus')),
     };
-
-    console.log('[BonusCal] bonusDiffEst column index:', idx.bonusDiffEst, 'headers:', headers.join(' | '));
 
     const creatorData: CreatorBonusCalData[] = lines.slice(1).map(line => {
       const vals = parseCSVLine(line);
@@ -458,7 +455,6 @@ export const fetchCreatorBonusCalData = async (): Promise<CreatorBonusCalData[]>
         shippedRevAds: idx.shippedRevAds !== -1 ? parseCurrency(vals[idx.shippedRevAds]) : 0,
         commissionOrganic: idx.commissionOrganic !== -1 ? parseCurrency(vals[idx.commissionOrganic]) : 0,
         commissionAds: idx.commissionAds !== -1 ? parseCurrency(vals[idx.commissionAds]) : 0,
-        bonusDiffEst: idx.bonusDiffEst !== -1 ? parseCurrency(vals[idx.bonusDiffEst]) : 0,
         tiers,
       };
     }).filter(d => d.creatorName !== 'Unknown' && d.creatorName !== '' && d.dataMonth !== '');
@@ -688,22 +684,18 @@ export const calculateCreatorSettlements = (
   });
 
   // Helper: compute estimated bonus diff for a single month for a creator
-  // Uses pre-calculated bonusDiffEst from spreadsheet when available for the current month
-  // Falls back to tier-based calculation for past months or when bonusDiffEst is not available
+  // For current month: project revenue to end-of-month, then look up tier
+  // For past months: use raw revenue from BonusCal (if available)
   const estimateMonthBonus = (creatorName: string, month: string, allowFallback: boolean): { bonus: number; projTier: number; orgTier: number } => {
     const exactMatch = bonusCalByKey.get(`${creatorName}|${month}`);
     const bc = exactMatch || (allowFallback ? latestBonusCalByCreator.get(creatorName) : undefined);
     if (!bc || bc.tiers.length === 0) return { bonus: 0, projTier: 0, orgTier: 0 };
 
-    // For current month with exact match: use pre-calculated bonusDiffEst from spreadsheet
-    const isEstimatingCurrentMonth = month === currentMonthStr;
-    if (isEstimatingCurrentMonth && exactMatch) {
-      return { bonus: exactMatch.bonusDiffEst, projTier: 0, orgTier: 0 };
-    }
-
     let sales = bc.totalShippedRevenue;
     let organic = bc.shippedRevOrganic;
 
+    // Project if estimating for the current month (regardless of which month the data is from)
+    const isEstimatingCurrentMonth = month === currentMonthStr;
     if (isEstimatingCurrentMonth) {
       const daysSoFar = Math.max(1, bc.dataDay || now.getDate());
       const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();

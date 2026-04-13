@@ -105,7 +105,6 @@ export interface CreatorBonusCalData {
   shippedRevAds: number;          // Shipped Rev.-Ads
   commissionOrganic: number;      // Commission-Organic
   commissionAds: number;          // Commission-Ads
-  bonusDiffEst: number;           // Bonus Diff Est.(per month) from spreadsheet
   tiers: TierLevel[];             // Tier thresholds and bonuses
 }
 
