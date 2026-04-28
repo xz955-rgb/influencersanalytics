@@ -367,15 +367,18 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
     });
 
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const daysSoFar = Math.max(1, now.getDate());
-    const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const bonusCalCurrent = new Map<string, number>();
-    bonusCalData.filter(bc => bc.dataMonth === currentMonthStr).forEach(bc => {
-      if (bc.tiers.length > 0) {
-        // Project Sales & Organic to end of month for estimated bonus
-        const projSales = (bc.totalShippedRevenue / daysSoFar) * totalDaysInMonth;
-        const projOrganic = (bc.shippedRevOrganic / daysSoFar) * totalDaysInMonth;
-        bonusCalCurrent.set(bc.creatorName, calculateTierBonus(projSales, bc.tiers) - calculateTierBonus(projOrganic, bc.tiers));
+
+    // Build BonusCal-based bonus estimate per month per creator (for any month with BonusCal data)
+    const bonusCalByMonth = new Map<string, Map<string, { sales: number; organic: number; day: number; tiers: typeof bonusCalData[0]['tiers'] }>>();
+    bonusCalData.forEach(bc => {
+      if (bc.tiers.length === 0) return;
+      if (!bonusCalByMonth.has(bc.dataMonth)) bonusCalByMonth.set(bc.dataMonth, new Map());
+      const existing = bonusCalByMonth.get(bc.dataMonth)!.get(bc.creatorName);
+      if (!existing || bc.dataDay > existing.day) {
+        bonusCalByMonth.get(bc.dataMonth)!.set(bc.creatorName, {
+          sales: bc.totalShippedRevenue, organic: bc.shippedRevOrganic,
+          day: bc.dataDay, tiers: bc.tiers
+        });
       }
     });
 
@@ -388,9 +391,33 @@ export const OverviewDashboard: React.FC<OverviewProps> = ({ data, tierData, pos
       const [y, m] = month.split('-').map(Number);
       const dim = new Date(y, m, 0).getDate();
       const cb = new Map<string, number>();
+
       const actual = monthlyBonusMap.get(month);
-      if (actual) { actual.forEach((b, c) => cb.set(c, b / dim)); }
-      else if (month === currentMonthStr) { bonusCalCurrent.forEach((b, c) => cb.set(c, b / dim)); }
+      if (actual && actual.size > 0) {
+        actual.forEach((b, c) => cb.set(c, b / dim));
+      } else {
+        // Fallback: estimate from BonusCal for this month
+        const bcMonth = bonusCalByMonth.get(month);
+        if (bcMonth) {
+          const isCurrentMonth = month === currentMonthStr;
+          bcMonth.forEach(({ sales, organic, day, tiers }, creator) => {
+            let projSales = sales;
+            let projOrganic = organic;
+            if (isCurrentMonth) {
+              const daysSoFar = Math.max(1, day || now.getDate());
+              projSales = (sales / daysSoFar) * dim;
+              projOrganic = (organic / daysSoFar) * dim;
+            } else {
+              // Past month: use data as-is if day covers most of month, otherwise project
+              const daysSoFar = Math.max(1, day);
+              projSales = (sales / daysSoFar) * dim;
+              projOrganic = (organic / daysSoFar) * dim;
+            }
+            const bonusDiff = calculateTierBonus(projSales, tiers) - calculateTierBonus(projOrganic, tiers);
+            cb.set(creator, bonusDiff / dim);
+          });
+        }
+      }
       dailyBonusPerMonth.set(month, cb);
     });
 
