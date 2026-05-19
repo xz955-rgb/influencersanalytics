@@ -145,7 +145,9 @@ const parseRawCSV = (text: string, marketplace: string): AdDataRaw[] => {
     amazonUrl: headers.findIndex(h => h.includes('amazon') || h.includes('landing') || h.includes('product link') || h.includes('asin')),
   };
 
-  return lines.slice(1).map(line => {
+  console.log(`[parseRawCSV] ${marketplace}: ${lines.length - 1} data rows, date col=${idx.date}, headers:`, headers.join(' | '));
+
+  const allParsed = lines.slice(1).map((line, i) => {
     const vals = parseCSVLine(line);
     let status = 'unknown';
     if (idx.status !== -1 && vals[idx.status]) {
@@ -156,9 +158,16 @@ const parseRawCSV = (text: string, marketplace: string): AdDataRaw[] => {
       else status = rawStatus || 'unknown';
     }
     const rawTheme = idx.theme !== -1 ? (vals[idx.theme] || '').trim() : '';
+    const rawDateStr = idx.date !== -1 ? vals[idx.date] : '';
+    const parsedDate = new Date(rawDateStr);
+
+    if (isNaN(parsedDate.getTime()) && i < 5) {
+      console.warn(`[parseRawCSV] ${marketplace} row ${i + 1}: invalid date "${rawDateStr}"`, vals.slice(0, 5));
+    }
 
     return {
-      date: new Date(vals[idx.date]),
+      date: parsedDate,
+      rawDateStr,
       creatorName: idx.creator !== -1 ? (vals[idx.creator] || 'Unknown') : 'Unknown',
       contentName: idx.content !== -1 ? vals[idx.content] : (idx.creator !== -1 ? `${vals[idx.creator]} Post` : 'Untitled'),
       platform: idx.platform !== -1 ? vals[idx.platform] : 'Other',
@@ -172,7 +181,22 @@ const parseRawCSV = (text: string, marketplace: string): AdDataRaw[] => {
       postUrl: idx.postUrl !== -1 ? vals[idx.postUrl]?.trim() || undefined : undefined,
       amazonUrl: idx.amazonUrl !== -1 ? vals[idx.amazonUrl]?.trim() || undefined : undefined,
     };
-  }).filter(d => !isNaN(d.date.getTime()));
+  });
+
+  const valid = allParsed.filter(d => !isNaN(d.date.getTime()));
+  const invalid = allParsed.filter(d => isNaN(d.date.getTime()));
+
+  if (valid.length > 0) {
+    const dates = valid.map(d => d.date.getTime());
+    const minD = new Date(Math.min(...dates));
+    const maxD = new Date(Math.max(...dates));
+    console.log(`[parseRawCSV] ${marketplace}: ${valid.length} valid rows, date range: ${minD.toLocaleDateString()} – ${maxD.toLocaleDateString()}`);
+  }
+  if (invalid.length > 0) {
+    console.warn(`[parseRawCSV] ${marketplace}: ${invalid.length} rows with invalid dates. Samples:`, invalid.slice(0, 5).map(d => d.rawDateStr));
+  }
+
+  return valid;
 };
 
 export const fetchData = async (): Promise<AdData[]> => {
