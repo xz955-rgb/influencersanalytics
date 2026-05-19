@@ -96,14 +96,15 @@ const Dashboard: React.FC = () => {
         setPostLinks(linksData);
         setBonusCalData(creatorBonusData);
         setMonthlyEarningData(monthlyData);
-        // Initialize Date Filters
+        // Initialize Date Filters (use local date to avoid timezone shift)
         if (adData.length > 0) {
             const minDate = new Date(Math.min(...adData.map(i => i.date.getTime())));
             const maxDate = new Date(Math.max(...adData.map(i => i.date.getTime())));
+            const fmtLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
             setFilters(prev => ({
                 ...prev,
-                startDate: minDate.toISOString().split('T')[0],
-                endDate: maxDate.toISOString().split('T')[0]
+                startDate: fmtLocal(minDate),
+                endDate: fmtLocal(maxDate)
             }));
         }
         setLoading(false);
@@ -133,8 +134,10 @@ const Dashboard: React.FC = () => {
   // Apply Filters
   const filteredData = useMemo(() => {
     return data.filter(item => {
-      const dateMatch = (!filters.startDate || item.date >= new Date(filters.startDate)) &&
-                        (!filters.endDate || item.date <= new Date(filters.endDate));
+      // Compare dates using local YYYY-MM-DD strings to avoid timezone mismatch
+      const itemDateStr = `${item.date.getFullYear()}-${String(item.date.getMonth()+1).padStart(2,'0')}-${String(item.date.getDate()).padStart(2,'0')}`;
+      const dateMatch = (!filters.startDate || itemDateStr >= filters.startDate) &&
+                        (!filters.endDate || itemDateStr <= filters.endDate);
       const creatorMatch = filters.creators.length === 0 || filters.creators.includes(item.creatorName);
       const platformMatch = filters.platforms.length === 0 || filters.platforms.includes(item.platform);
       const marketplaceMatch = filters.marketplaces.length === 0 || filters.marketplaces.includes(item.marketplace);
