@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FilterState } from '../types';
 import { Filter, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { CATEGORY_ORDER, THEME_TAXONOMY, toThemePath } from '../themeTaxonomy';
 
 interface FiltersProps {
   filters: FilterState;
@@ -25,6 +26,13 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
       return { ...prev, [key]: [...current, value] };
     });
   };
+
+  // Order Categories per taxonomy: Fashion, Home, Seasonal, Holiday, Other
+  const orderedCategories = React.useMemo(() => {
+    const known = CATEGORY_ORDER.filter(c => uniqueOptions.categories.includes(c));
+    const rest = uniqueOptions.categories.filter(c => !CATEGORY_ORDER.includes(c as typeof CATEGORY_ORDER[number])).sort();
+    return [...known, ...rest];
+  }, [uniqueOptions.categories]);
 
   const clearFilters = () => {
     setFilters(prev => ({
@@ -61,43 +69,39 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
     </div>
   );
 
-  // Themes Section with Hierarchical Grouping (format: "Category/Subcategory")
+  // Themes: fixed taxonomy (level-1 → level-2), merged with any legacy paths from data
   const ThemesSection: React.FC<{ themes: string[], filters: FilterState, setFilters: React.Dispatch<React.SetStateAction<FilterState>> }> = ({ themes, filters, setFilters }) => {
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    
-    // Parse themes into hierarchical structure
+    const themesInData = React.useMemo(() => new Set(themes), [themes]);
+
     const themeGroups = React.useMemo(() => {
       const groups: Record<string, string[]> = {};
-      
+
+      // Build from fixed taxonomy first
+      CATEGORY_ORDER.forEach(cat => {
+        groups[cat] = THEME_TAXONOMY[cat].map(sub => toThemePath(cat, sub));
+      });
+
+      // Append legacy / unmapped theme paths from data
       themes.forEach(theme => {
         if (theme.includes('/')) {
-          const [category, subcategory] = theme.split('/');
+          const [category] = theme.split('/');
           if (!groups[category]) groups[category] = [];
-          groups[category].push(theme);
-        } else {
-          // Legacy themes without category go to Other
+          if (!groups[category].includes(theme)) groups[category].push(theme);
+        } else if (theme) {
           if (!groups['Other']) groups['Other'] = [];
-          groups['Other'].push(theme);
+          if (!groups['Other'].includes(theme)) groups['Other'].push(theme);
         }
       });
-      
-      // Sort categories: Holiday, Seasonal, Home, Fashion first, then Other last
-      const categoryOrder = ['Holiday', 'Seasonal', 'Home', 'Fashion', 'Other'];
+
       const sortedGroups: Record<string, string[]> = {};
-      
-      categoryOrder.forEach(cat => {
-        if (groups[cat]) {
-          sortedGroups[cat] = groups[cat].sort();
-        }
+      CATEGORY_ORDER.forEach(cat => {
+        if (groups[cat]?.length) sortedGroups[cat] = groups[cat];
       });
-      
-      // Add any remaining categories
       Object.keys(groups).forEach(cat => {
-        if (!sortedGroups[cat]) {
-          sortedGroups[cat] = groups[cat].sort();
-        }
+        if (!sortedGroups[cat]) sortedGroups[cat] = groups[cat].sort();
       });
-      
+
       return sortedGroups;
     }, [themes]);
     
@@ -194,6 +198,7 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
                     </button>
                     {groupThemes.map(theme => {
                       const isSelected = (filters.themes as string[]).includes(theme);
+                      const hasData = themesInData.has(theme);
                       return (
                         <button
                           key={theme}
@@ -201,7 +206,9 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
                           className={`px-2 py-1 text-[10px] rounded-full border transition-all ${
                             isSelected 
                               ? 'bg-indigo-600 text-white border-indigo-600' 
-                              : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                              : hasData
+                                ? 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                                : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-slate-200'
                           }`}
                         >
                           {getDisplayName(theme)}
@@ -332,7 +339,7 @@ export const Filters: React.FC<FiltersProps> = ({ filters, setFilters, uniqueOpt
       <Section title="Marketplace" options={uniqueOptions.marketplaces} selectedKey="marketplaces" />
       <Section title="Platforms" options={uniqueOptions.platforms} selectedKey="platforms" />
       <Section title="Creators" options={uniqueOptions.creators} selectedKey="creators" />
-      <Section title="Categories" options={uniqueOptions.categories} selectedKey="categories" />
+      <Section title="Categories" options={orderedCategories} selectedKey="categories" />
       
       {/* Themes with Grouping */}
       <ThemesSection 

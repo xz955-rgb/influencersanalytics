@@ -1,4 +1,5 @@
 import { AdData, AdDataRaw, CreatorTierData, TierLevel, CreatorBonusCalData, CreatorSettlement, EarningsSummary, MonthlyEarningRow } from '../types';
+import { CATEGORY_ORDER, CATEGORY_SYNONYMS, THEME_KEYWORDS, type TopCategory } from '../themeTaxonomy';
 
 // Netlify Function endpoint for fetching sheets (private, authenticated)
 const SHEET_API = '/.netlify/functions/fetch-sheet';
@@ -66,59 +67,56 @@ const parseCurrency = (val: string): number => {
   return isNaN(num) ? 0 : num;
 };
 
-// Theme category mapping: { normalizedName: [possible raw values] }
-const THEME_CATEGORIES: Record<string, Record<string, string[]>> = {
-  'Holiday': {
-    'Valentine': ['valentine', 'valentines', "valentine's"],
-    'Christmas': ['xmas', 'christmas'],
-    'New Year': ['new year', 'newyear'],
-    'Black Friday': ['black friday', 'blackfriday'],
-    'Halloween': ['halloween'],
-    'Super Bowl': ['superbowl', 'super bowl'],
-  },
-  'Seasonal': {
-    'Spring': ['spring'],
-    'Summer': ['summer'],
-    'Fall': ['fall', 'autumn'],
-    'Winter': ['winter'],
-  },
-  'Home': {
-    'General': ['home'],
-    'Bedroom': ['bedroom'],
-    'Kitchen': ['kitchen'],
-    'Bathroom': ['bathroom'],
-  },
-  'Fashion': {
-    'Apparel': ['apparel', 'clothing'],
-    'General': ['fashion'],
-    'Accessories': ['accessories'],
-    'Beauty': ['makeup', 'beauty'],
-  },
-  'Other': {
-    'Pet': ['pet', 'pets'],
-    'Travel': ['vacation', 'travel'],
-    'Gift': ['gift', 'gifts'],
-    'General': [], // Fallback for empty or unknown themes
-  },
+const norm = (s: string): string => (s || '').toLowerCase().trim();
+
+// Resolve a raw category column value into one of the top-level categories (or null)
+const resolveTopCategory = (rawCategory: string): TopCategory | null => {
+  const c = norm(rawCategory);
+  if (!c) return null;
+  const match = CATEGORY_ORDER.find(x => x.toLowerCase() === c);
+  if (match) return match;
+  return CATEGORY_SYNONYMS[c] || null;
 };
 
-// Normalize theme into standardized categories (format: "Category/Subcategory")
-const normalizeTheme = (rawTheme: string): string => {
-  if (!rawTheme || rawTheme.toLowerCase() === 'theme') return 'Other/General';
-  
-  const theme = rawTheme.toLowerCase().trim();
-  
-  // Search through all categories and subcategories
-  for (const [category, subcategories] of Object.entries(THEME_CATEGORIES)) {
-    for (const [subcategory, keywords] of Object.entries(subcategories)) {
-      if (keywords.includes(theme)) {
-        return `${category}/${subcategory}`;
-      }
+// Match a raw value against the leaves of a given category; returns subcategory name or null
+const matchLeafInCategory = (value: string, category: TopCategory): string | null => {
+  const v = norm(value);
+  if (!v) return null;
+  const subs = THEME_KEYWORDS[category];
+  if (!subs) return null;
+  for (const [sub, keywords] of Object.entries(subs)) {
+    if (keywords.some(k => v === k || v.includes(k))) return sub;
+    if (v === sub.toLowerCase()) return sub;
+  }
+  return null;
+};
+
+// Classify raw category + theme columns into the taxonomy.
+// Returns { category: top-level, theme: "Category/Subcategory" }
+const classifyCategoryTheme = (rawCategory: string, rawTheme: string): { category: string; theme: string } => {
+  const topHint = resolveTopCategory(rawCategory);
+
+  if (topHint) {
+    const sub = matchLeafInCategory(rawTheme, topHint) || matchLeafInCategory(rawCategory, topHint);
+    if (sub) return { category: topHint, theme: `${topHint}/${sub}` };
+    const leafLabel = rawTheme && norm(rawTheme) !== 'theme'
+      ? rawTheme.trim().replace(/\b\w/g, m => m.toUpperCase())
+      : 'General';
+    return { category: topHint, theme: `${topHint}/${leafLabel}` };
+  }
+
+  for (const value of [rawTheme, rawCategory]) {
+    for (const cat of CATEGORY_ORDER) {
+      const sub = matchLeafInCategory(value, cat);
+      if (sub) return { category: cat, theme: `${cat}/${sub}` };
     }
   }
-  
-  // If no match found, put in Other with the original name capitalized
-  return `Other/${rawTheme.charAt(0).toUpperCase() + rawTheme.slice(1)}`;
+
+  if (rawTheme && norm(rawTheme) !== 'theme') {
+    const label = rawTheme.trim().replace(/\b\w/g, m => m.toUpperCase());
+    return { category: 'Other', theme: `Other/${label}` };
+  }
+  return { category: 'Other', theme: 'Other/General' };
 };
 
 const parseRawCSV = (text: string, marketplace: string): AdDataRaw[] => {
@@ -158,6 +156,8 @@ const parseRawCSV = (text: string, marketplace: string): AdDataRaw[] => {
       else status = rawStatus || 'unknown';
     }
     const rawTheme = idx.theme !== -1 ? (vals[idx.theme] || '').trim() : '';
+    const rawCategory = idx.category !== -1 ? (vals[idx.category] || '').trim() : '';
+    const { category, theme } = classifyCategoryTheme(rawCategory, rawTheme);
     const rawDateStr = idx.date !== -1 ? vals[idx.date] : '';
     const parsedDate = new Date(rawDateStr);
 
@@ -172,8 +172,8 @@ const parseRawCSV = (text: string, marketplace: string): AdDataRaw[] => {
       contentName: idx.content !== -1 ? vals[idx.content] : (idx.creator !== -1 ? `${vals[idx.creator]} Post` : 'Untitled'),
       platform: idx.platform !== -1 ? vals[idx.platform] : 'Other',
       marketplace,
-      category: idx.category !== -1 ? vals[idx.category] : 'Uncategorized',
-      theme: normalizeTheme(rawTheme),
+      category,
+      theme,
       spend: idx.spend !== -1 ? parseCurrency(vals[idx.spend]) : 0,
       gmv: idx.gmv !== -1 ? parseCurrency(vals[idx.gmv]) : 0,
       earning: idx.earning !== -1 ? parseCurrency(vals[idx.earning]) : 0,
