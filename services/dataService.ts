@@ -22,6 +22,22 @@ const looksLikeHtml = (text: string): boolean => {
   return head.startsWith('<!doctype') || head.startsWith('<html') || head.startsWith('<');
 };
 
+// The Netlify Function gzips its response (Content-Encoding: gzip) to stay under
+// the 6 MB payload limit. Browsers normally decompress transparently, but if the
+// edge ever delivers the raw gzip bytes without the header we decompress here as
+// a safety net. Reading the body as bytes and checking the gzip magic number
+// (0x1f 0x8b) handles both cases.
+const readBodyAsText = async (res: Response): Promise<string> => {
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (isGzip && typeof DecompressionStream !== 'undefined') {
+    const stream = new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')));
+    return stream.text();
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+};
+
 const fetchSheetCSV = async (source: string): Promise<string> => {
   const errors: string[] = [];
 
@@ -29,7 +45,7 @@ const fetchSheetCSV = async (source: string): Promise<string> => {
   try {
     const res = await fetch(`${SHEET_API}?source=${source}`);
     if (res.ok) {
-      const text = await res.text();
+      const text = await readBodyAsText(res);
       if (!looksLikeHtml(text)) return text;
       errors.push(`Netlify function returned HTML instead of CSV (is the app deployed with functions enabled?)`);
     } else {
