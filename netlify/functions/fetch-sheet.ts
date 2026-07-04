@@ -128,35 +128,24 @@ exports.handler = async (event: { queryStringParameters?: Record<string, string>
 
     // Netlify/AWS Lambda caps synchronous function responses at ~6 MB. Large
     // sheets (e.g. Amazon ad data) exceed this and fail with a 502
-    // "Function.ResponseSizeTooLarge". Gzip the CSV so the payload stays well
-    // under the limit — browsers transparently decompress via Content-Encoding.
-    const acceptsGzip = (event.headers?.['accept-encoding'] || event.headers?.['Accept-Encoding'] || '')
-      .toLowerCase()
-      .includes('gzip');
-
-    if (acceptsGzip) {
-      const compressed = gzipSync(Buffer.from(csv, 'utf-8'));
-      return {
-        statusCode: 200,
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Encoding': 'gzip',
-          'Cache-Control': 'public, max-age=300',
-          'Access-Control-Allow-Origin': '*',
-        },
-        body: compressed.toString('base64'),
-        isBase64Encoded: true,
-      };
-    }
-
+    // "Function.ResponseSizeTooLarge". Always gzip the CSV so the payload stays
+    // well under the limit — CSV compresses to roughly 1/10th its size.
+    //
+    // We do NOT gate on the request's Accept-Encoding header: Netlify strips /
+    // normalizes it before invoking the function, so it can't be relied upon.
+    // Every browser accepts gzip and transparently decompresses a response with
+    // Content-Encoding: gzip, so returning it unconditionally is safe here.
+    const compressed = gzipSync(Buffer.from(csv, 'utf-8'));
     return {
       statusCode: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Encoding': 'gzip',
         'Cache-Control': 'public, max-age=300',
         'Access-Control-Allow-Origin': '*',
       },
-      body: csv,
+      body: compressed.toString('base64'),
+      isBase64Encoded: true,
     };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
