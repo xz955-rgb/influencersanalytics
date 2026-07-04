@@ -13,18 +13,52 @@ const FALLBACK_URLS: Record<string, string> = {
   posts: 'https://docs.google.com/spreadsheets/d/1ybVbxN7dporSwYVyFks8p-RgMqmnUTBDaHyAfqLtB70/export?format=csv&gid=1203420941',
 };
 
+// Google returns an HTML sign-in / error page (with a 200 or 4xx) when a sheet
+// is no longer public. Netlify's SPA redirect can also return index.html for an
+// unknown function route. In both cases the body is HTML, not CSV — detect it so
+// we don't silently parse an error page as data.
+const looksLikeHtml = (text: string): boolean => {
+  const head = text.slice(0, 200).trim().toLowerCase();
+  return head.startsWith('<!doctype') || head.startsWith('<html') || head.startsWith('<');
+};
+
 const fetchSheetCSV = async (source: string): Promise<string> => {
+  const errors: string[] = [];
+
   // Try Netlify Function first (works in production and `netlify dev`)
   try {
     const res = await fetch(`${SHEET_API}?source=${source}`);
-    if (res.ok) return res.text();
-  } catch { /* fall through */ }
-  // Fallback to direct published URL
+    if (res.ok) {
+      const text = await res.text();
+      if (!looksLikeHtml(text)) return text;
+      errors.push(`Netlify function returned HTML instead of CSV (is the app deployed with functions enabled?)`);
+    } else {
+      const body = await res.text().catch(() => '');
+      errors.push(`Netlify function responded ${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 200)}` : ''}`);
+    }
+  } catch (e) {
+    errors.push(`Netlify function unreachable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // Fallback to direct published URL — only works while the sheet is public.
   const url = FALLBACK_URLS[source];
-  if (!url) throw new Error(`No URL configured for source: ${source}`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${source}: ${res.statusText}`);
-  return res.text();
+  if (!url) {
+    throw new Error(`Failed to fetch "${source}". No fallback URL configured. ${errors.join(' | ')}`);
+  }
+  try {
+    const res = await fetch(url);
+    const text = await res.text();
+    if (res.ok && !looksLikeHtml(text)) return text;
+    if (looksLikeHtml(text)) {
+      errors.push(`Fallback sheet is not public (Google returned an HTML page, HTTP ${res.status}). Configure the Netlify Function credentials or re-publish the sheet.`);
+    } else {
+      errors.push(`Fallback URL responded ${res.status} ${res.statusText}`);
+    }
+  } catch (e) {
+    errors.push(`Fallback URL unreachable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  throw new Error(`Failed to fetch "${source}". ${errors.join(' | ')}`);
 };
 
 // Post links mapping type

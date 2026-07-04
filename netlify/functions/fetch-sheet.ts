@@ -1,4 +1,5 @@
 import { GoogleAuth } from 'google-auth-library';
+import { gzipSync } from 'zlib';
 
 interface SheetConfig {
   spreadsheetId: string;
@@ -105,7 +106,7 @@ const fetchWithAuth = async (config: SheetConfig): Promise<string> => {
     .join('\n');
 };
 
-exports.handler = async (event: { queryStringParameters?: Record<string, string> }) => {
+exports.handler = async (event: { queryStringParameters?: Record<string, string>; headers?: Record<string, string> }) => {
   const source = event.queryStringParameters?.source;
   if (!source) {
     return { statusCode: 400, body: 'Missing "source" parameter' };
@@ -124,6 +125,29 @@ exports.handler = async (event: { queryStringParameters?: Record<string, string>
 
   try {
     const csv = await fetchWithAuth(config);
+
+    // Netlify/AWS Lambda caps synchronous function responses at ~6 MB. Large
+    // sheets (e.g. Amazon ad data) exceed this and fail with a 502
+    // "Function.ResponseSizeTooLarge". Gzip the CSV so the payload stays well
+    // under the limit — browsers transparently decompress via Content-Encoding.
+    const acceptsGzip = (event.headers?.['accept-encoding'] || event.headers?.['Accept-Encoding'] || '')
+      .toLowerCase()
+      .includes('gzip');
+
+    if (acceptsGzip) {
+      const compressed = gzipSync(Buffer.from(csv, 'utf-8'));
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Encoding': 'gzip',
+          'Cache-Control': 'public, max-age=300',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: compressed.toString('base64'),
+        isBase64Encoded: true,
+      };
+    }
 
     return {
       statusCode: 200,
