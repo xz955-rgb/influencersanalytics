@@ -82,7 +82,9 @@ const Dashboard: React.FC = () => {
   });
 
   // Load Data
-  useEffect(() => {
+  const loadData = React.useCallback(() => {
+    setLoading(true);
+    setError(null);
     Promise.all([
       fetchData(),
       fetchBonusCalData(),
@@ -111,10 +113,14 @@ const Dashboard: React.FC = () => {
       })
       .catch((err) => {
         console.error(err);
-        setError("Failed to load analytics data. Please try again later.");
+        setError(err instanceof Error ? err.message : "Failed to load analytics data. Please try again later.");
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Compute Unique Options for Filters
   const uniqueOptions = useMemo(() => {
@@ -159,8 +165,25 @@ const Dashboard: React.FC = () => {
 
   if (error) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-50 text-red-500">
-        <p>{error}</p>
+      <div className="h-screen w-full flex items-center justify-center bg-slate-50 p-4">
+        <div className="max-w-lg w-full bg-white border border-red-200 rounded-2xl shadow-sm p-8 text-center">
+          <div className="w-12 h-12 mx-auto bg-red-100 rounded-full flex items-center justify-center mb-4">
+            <Lock className="w-6 h-6 text-red-500" />
+          </div>
+          <h2 className="text-lg font-semibold text-slate-800 mb-2">Failed to load data</h2>
+          <p className="text-sm text-slate-500 break-words mb-1">{error}</p>
+          <p className="text-xs text-slate-400 mb-6">
+            The dashboard reads private Google Sheets through the Netlify Function proxy.
+            This usually means the function credentials (GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY,
+            spreadsheet IDs) are missing, or the service account no longer has access to the sheet.
+          </p>
+          <button
+            onClick={loadData}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
